@@ -32,7 +32,7 @@ bash /root/darkwatch-source/install.sh
 
 The installer will ask for an admin username and password. Your configuration/data stay in `/etc/darkwatch` and `/var/lib/darkwatch` on subsequent installations, respectively.
 
-> The repository URL above becomes functional only once the repository is created and these files are uploaded.
+**Shortcut (review the script before running):** `curl -fsSL https://raw.githubusercontent.com/darktunnelmika/darkwatch/main/bootstrap.sh | bash`
 
 ## Install on the Iran hub
 

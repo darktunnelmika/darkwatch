@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070d14">
+  <title>DARKWATCH — Fleet Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/vendor/xterm.css">
+</head>
+<body>
+  <div id="login" class="login-screen hidden">
+    <div class="login-glow"></div>
+    <form id="login-form" class="login-card">
+      <div class="brand-emblem large">D<span>W</span></div>
+      <div class="overline">SECURE COMMAND INTERFACE</div>
+      <h1>DARK<span>WATCH</span></h1>
+      <p>کنترل و مشاهده وضعیت سرورها در یک نگاه</p>
+      <label for="login-user">نام کاربری</label>
+      <input id="login-user" autocomplete="username" value="admin" required>
+      <label for="login-pass">رمز عبور</label>
+      <input id="login-pass" type="password" autocomplete="current-password" required>
+      <button class="primary-btn wide" type="submit">ورود به داشبورد <span>↗</span></button>
+      <div class="error" id="login-error" aria-live="polite"></div>
+      <div class="secure-caption">● PRIVATE ACCESS / ENCRYPTED SESSION</div>
+    </form>
+  </div>
+
+  <div id="application" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="logo-group">
+        <div class="brand-emblem">D<span>W</span></div>
+        <div><div class="brand-title">DARK<span>WATCH</span></div><div class="brand-caption">PRIVATE FLEET MONITOR</div></div>
+      </div>
+      <div class="nav-label">COMMAND CENTER</div>
+      <nav class="sidebar-nav" id="nav">
+        <button class="nav-item active" data-page="overview"><span class="nav-icon">◈</span> نمای کلی <span class="nav-arrow">←</span></button>
+        <button class="nav-item" data-page="servers"><span class="nav-icon">▦</span> سرورها <span class="nav-count" id="server-count">0</span></button>
+        <button class="nav-item" data-page="network"><span class="nav-icon">⌁</span> ترافیک زنده</button>
+        <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span> راهنمای اتصال</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="mini-stat"><span class="live-dot"></span> MONITORING ACTIVE</div>
+        <div class="side-version">DW / MONITOR v0.1.0</div>
+        <button id="logout" class="logout-btn">↪ خروج از حساب</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div class="topbar-right"><div class="breadcrumb">DARKWATCH <span>/</span> <b id="breadcrumb">داشبورد</b></div>
+        <div class="topbar-sub">MONITORING SYSTEM // LIVE STATUS</div></div>
+        <div class="topbar-left">
+          <div class="status-chip"><span class="live-dot"></span> LIVE <span id="sync-indicator">—</span></div>
+          <span id="current-clock" class="clock">--:--:--</span>
+          <div class="avatar">DW</div>
+        </div>
+      </header>
+
+      <section id="page-overview" class="page active">
+        <div class="headline-row">
+          <div><div class="overline cyan">// OVERVIEW / REAL-TIME INFRASTRUCTURE</div><h1>مرکز مانیتورینگ <span>سرورها</span></h1><p class="muted">وضعیت تمام سرورها و منابع در یک نمای یکپارچه</p></div>
+          <div class="headline-actions"><button id="display-mode" class="secondary-btn">⛶ حالت نمایشگر</button><button class="primary-btn add-server-btn">+ افزودن سرور</button></div>
+        </div>
+        <div class="metric-grid">
+          <article class="metric-card"><div class="metric-label"><span>▦</span> کل سرورها</div><div class="metric-value" id="metric-total">—</div><div class="metric-foot"><span class="green" id="metric-online">— آنلاین</span><span class="tiny-muted">CONNECTED DEVICES</span></div><div class="metric-watermark">01</div></article>
+          <article class="metric-card"><div class="metric-label"><span>◉</span> وضعیت شبکه</div><div class="metric-value"><span id="metric-health">—</span><span class="value-unit">%</span></div><div class="metric-foot"><span class="green" id="metric-offline">— آفلاین</span><span class="tiny-muted">FLEET HEALTH</span></div><div class="metric-watermark">02</div></article>
+          <article class="metric-card"><div class="metric-label"><span class="cyan">↙</span> دریافت کل</div><div class="metric-value"><span id="metric-rx">—</span><span class="value-unit" id="metric-rx-unit">Mbps</span></div><div class="metric-foot"><span class="cyan">▼ DOWNLOAD / RX</span><span class="tiny-muted">LIVE RATE</span></div><div class="metric-watermark">03</div></article>
+          <article class="metric-card"><div class="metric-label"><span class="violet">↗</span> ارسال کل</div><div class="metric-value"><span id="metric-tx">—</span><span class="value-unit" id="metric-tx-unit">Mbps</span></div><div class="metric-foot"><span class="violet">▲ UPLOAD / TX</span><span class="tiny-muted">LIVE RATE</span></div><div class="metric-watermark">04</div></article>
+        </div>
+        <div class="section-bar"><div><h2>وضعیت سرورها <span id="online-indicator" class="section-count"></span></h2><p class="muted">نمایش زنده منابع، ترافیک و زمان فعالیت</p></div><div class="filters"><button data-filter="all" class="filter active">همه</button><button data-filter="online" class="filter">آنلاین</button><button data-filter="offline" class="filter">آفلاین</button></div></div>
+        <div id="server-cards" class="server-grid"></div>
+        <div class="panel-row">
+          <div class="panel wide-panel"><div class="panel-header"><div><div class="overline">NETWORK TELEMETRY</div><h3>نمودار زنده ترافیک</h3></div><div class="legend"><span><i class="legend-dot aqua"></i> RX</span><span><i class="legend-dot purple"></i> TX</span></div></div><canvas id="overview-chart" class="line-chart" aria-label="Network bandwidth chart"></canvas><div class="axis-caption"><span>داده‌های اخیر</span><span>به‌روزرسانی هر <b id="refresh-interval">۳</b> ثانیه</span></div></div>
+          <div class="panel narrow-panel"><div class="panel-header"><div><div class="overline">SYSTEM FEED</div><h3>وضعیت اتصال</h3></div><span class="pulse-label"><i></i> LIVE</span></div><div id="activity-list" class="activity-list"></div></div>
+        </div>
+      </section>
+
+      <section id="page-servers" class="page">
+        <div class="headline-row"><div><div class="overline cyan">// NODES / FLEET INVENTORY</div><h1>مدیریت <span>سرورها</span></h1><p class="muted">لیست تمام سرورهای ثبت‌شده، وضعیت منابع و دسترسی سریع</p></div><button class="primary-btn add-server-btn">+ افزودن سرور</button></div>
+        <div class="panel"><div class="table-tools"><input id="search-server" placeholder="⌕ جستجو بر اساس نام، IP یا گروه..." class="search-box"><span class="muted small-text" id="table-count"></span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>سرور</th><th>وضعیت</th><th>CPU</th><th>RAM</th><th>شبکه RX/TX</th><th>عملیات</th></tr></thead><tbody id="server-table"></tbody></table></div></div>
+      </section>
+
+      <section id="page-network" class="page">
+        <div class="headline-row"><div><div class="overline cyan">// LIVE / TRAFFIC STREAM</div><h1>ترافیک <span>زنده</span></h1><p class="muted">سرعت واقعی شبکه و میزان انتقال اطلاعات هر سرور</p></div><div class="status-chip"><span class="live-dot"></span> REAL-TIME DATA</div></div>
+        <div class="network-kpis"><div class="panel net-kpi">TOTAL DOWNLOAD <h2 id="net-rx">—</h2></div><div class="panel net-kpi">TOTAL UPLOAD <h2 id="net-tx">—</h2></div><div class="panel net-kpi">ONLINE NODES <h2 id="net-online">—</h2></div></div>
+        <div class="panel network-panel"><div class="panel-header"><div><div class="overline">AGGREGATE / RX · TX</div><h3>نمودار پهنای باند</h3></div><div class="legend"><span><i class="legend-dot aqua"></i> RX</span><span><i class="legend-dot purple"></i> TX</span></div></div><canvas id="network-chart" class="line-chart big"></canvas></div>
+        <div class="panel"><div class="panel-header"><h3>ترافیک به تفکیک سرور</h3><span class="muted small-text">کارت شبکه پیش‌فرض هر سرور</span></div><div id="traffic-rows" class="traffic-rows"></div></div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="headline-row"><div><div class="overline cyan">// QUICK START / SECURE CONNECTIONS</div><h1>راهنمای <span>اتصال SSH</span></h1><p class="muted">برای افزودن سرور جدید به نصب Agent نیازی نیست</p></div></div>
+        <div class="help-grid"><div class="panel help-panel"><span class="step-number">01</span><h3>کلید عمومی پنل مرکزی</h3><p>بعد از نصب، روی سرور مرکزی دستور زیر را اجرا کن و خروجی کلید عمومی را بگیر:</p><code>sudo cat /var/lib/darkwatch/.ssh/id_ed25519.pub</code><button class="copy-btn" data-copy="sudo cat /var/lib/darkwatch/.ssh/id_ed25519.pub">کپی دستور</button></div>
+        <div class="panel help-panel"><span class="step-number">02</span><h3>مجوز اتصال به سرور مقصد</h3><p>کلید عمومی مرحله قبل را در فایل زیر روی سرور مقصد قرار بده:</p><code>~/.ssh/authorized_keys</code><p>اگر از root استفاده می‌کنی، کلید را در پوشه SSH کاربر root ثبت کن. برای امنیت بیشتر کاربر محدود پیشنهاد می‌شود.</p></div>
+        <div class="panel help-panel"><span class="step-number">03</span><h3>تأیید اثرانگشت سرور</h3><p>اثر انگشت SSH مقصد را از یک مسیر امن بررسی کن، سپس کلید میزبان را به known_hosts کاربر darkwatch اضافه کن. جزئیات دستورها در README آمده است.</p><code>/var/lib/darkwatch/.ssh/known_hosts</code></div>
+        <div class="panel help-panel"><span class="step-number">04</span><h3>افزودن سرور در پنل</h3><p>IP، پورت SSH و نام کاربری را وارد کن؛ پس از برقراری اتصال، نمودارها به‌صورت خودکار فعال می‌شوند.</p><button class="primary-btn add-server-btn">+ افزودن سرور</button></div></div>
+        <div class="security-note">🔒 پنل به‌طور پیش‌فرض فقط روی localhost باز می‌شود. برای دسترسی از بیرون از تونل SSH یا HTTPS استفاده کن. تأیید کلید میزبان SSH هرگز خودکار غیرفعال نمی‌شود.</div>
+      </section>
+
+      <footer class="footer"><span>◆ DARKWATCH // PRIVATE FLEET MONITOR</span><span>READ-ONLY METRICS · SECURE SSH</span></footer>
+    </main>
+  </div>
+
+  <dialog id="add-modal" class="modal"><form id="server-form" class="modal-content"><div class="modal-header"><div><div class="overline cyan">REGISTER A NODE</div><h2>افزودن سرور جدید</h2></div><button type="button" class="close-btn modal-close" aria-label="بستن">×</button></div><div class="field-group"><label>نام سرور</label><input name="name" placeholder="مثلاً Iran · Tehran 01" maxlength="48" required></div><div class="field-group"><label>آدرس IP یا دامنه</label><input name="host" placeholder="192.0.2.10" dir="ltr" maxlength="253" required></div><div class="field-cols"><div class="field-group"><label>پورت SSH</label><input name="port" type="number" value="22" min="1" max="65535" dir="ltr" required></div><div class="field-group"><label>کاربر SSH</label><input name="ssh_user" value="root" dir="ltr" required></div></div><div class="field-group"><label>گروه / لوکیشن</label><input name="group_name" value="ایران" required></div><p class="modal-hint">پیش از اتصال، کلید عمومی پنل و اثرانگشت SSH مقصد را تنظیم کن.</p><div class="modal-actions"><button type="button" class="secondary-btn modal-close">انصراف</button><button type="submit" class="primary-btn">ثبت سرور</button></div><div id="form-error" class="error"></div></form></dialog>
+
+  <dialog id="terminal-modal" class="terminal-modal"><div class="terminal-header"><div class="term-meta"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span><span id="terminal-title">SSH Terminal</span></div><button id="terminal-close" class="close-btn" aria-label="بستن ترمینال">×</button></div><div id="terminal-container"></div><div class="term-bottom"><span><span class="live-dot"></span> ENCRYPTED SSH SESSION</span><span>CTRL+C · CTRL+V (paste)</span></div></dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/static/vendor/xterm.js"></script>
+  <script src="/static/vendor/xterm-fit.js"></script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

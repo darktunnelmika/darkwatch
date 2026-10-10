@@ -1,0 +1,23 @@
+[Unit]
+Description=DarkWatch private server overview
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=darkwatch
+Group=darkwatch
+WorkingDirectory=/opt/darkwatch
+EnvironmentFile=/etc/darkwatch/env
+ExecStart=/opt/darkwatch/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=4
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/darkwatch
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
