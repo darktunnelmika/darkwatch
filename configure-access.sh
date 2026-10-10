@@ -11,6 +11,20 @@ setcfg() {
 }
 echo ""
 echo "======= DARKWATCH ACCESS SETUP ======="
+if [[ "${DW_FIRST_INSTALL:-0}" != 1 ]]; then
+  read -rp 'Change existing PIN/password? [y/N]: ' resetpw
+  if [[ "${resetpw,,}" == y || "${resetpw,,}" == yes ]]; then
+    echo 'Set a 4-digit numeric PIN or a 12+ character password:'
+    until result="$(cd /opt/darkwatch && /opt/darkwatch/.venv/bin/python -m app.cli hash-password --with-type)"; do
+      echo 'PIN/password mismatch or invalid length. Try again (Ctrl-C to cancel).' >&2
+    done
+    kind="${result%%|*}"; hash="${result#*|}"
+    [[ "$kind" == pin || "$kind" == strong ]] || exit 1
+    [[ "$hash" == scrypt\$* ]] || exit 1
+    setcfg DW_PASSWORD_HASH "$hash"
+    setcfg DW_PASSWORD_TYPE "$kind"
+  fi
+fi
 oldport="$(getcfg DW_PORT)"
 if [[ ! "$oldport" =~ ^[0-9]{4,5}$ ]]; then oldport=8765; fi
 while true; do
@@ -19,7 +33,7 @@ while true; do
   if [[ "$port" =~ ^[0-9]{4,5}$ ]] && ((10#$port >= 1024 && 10#$port <= 65535)); then port="$((10#$port))"; break; fi
   echo "Use a port from 1024 through 65535."
 done
-echo "1) Direct HTTPS panel: https://SERVER-IP:PORT (12+ character password)"
+echo "1) Direct HTTPS panel: https://SERVER-IP:PORT (PIN optional after security warning)"
 echo "2) Private SSH tunnel panel (4-digit PIN allowed)"
 while true; do
   read -rp "Access mode [1]: " mode
@@ -41,12 +55,16 @@ PYIP
   done
   bind=0.0.0.0
   if [[ "$(getcfg DW_PASSWORD_TYPE)" != strong ]]; then
-    echo "Set a 12+ character admin password for direct internet access."
-    until hash="$(cd /opt/darkwatch && /opt/darkwatch/.venv/bin/python -m app.cli hash-password --strong-only)"; do
-      echo "Password rejected. Try again."
-    done
-    setcfg DW_PASSWORD_HASH "$hash"
-    setcfg DW_PASSWORD_TYPE strong
+    echo 'SECURITY WARNING: A 4-digit PIN is weak for public access to a web SSH terminal.'
+    echo 'HTTPS does not stop PIN guessing. Restrict source IPs in your datacenter firewall.'
+    read -rp 'Type YES to enable direct HTTPS with this PIN: ' acknowledgement
+    if [[ "$acknowledgement" != YES ]]; then
+      echo 'Direct PIN access cancelled. Choose private mode or a stronger password.' >&2
+      exit 1
+    fi
+    setcfg DW_ALLOW_SHORT_PIN_PUBLIC 1
+  else
+    setcfg DW_ALLOW_SHORT_PIN_PUBLIC 0
   fi
   install -d -m 0750 -o root -g darkwatch /etc/darkwatch/tls
   key=/etc/darkwatch/tls/server.key
@@ -62,6 +80,7 @@ else
   bind=127.0.0.1
   if [[ -z "$(getcfg DW_PASSWORD_TYPE)" ]]; then setcfg DW_PASSWORD_TYPE pin-or-strong; fi
   setcfg DW_SESSION_SECURE 0
+  setcfg DW_ALLOW_SHORT_PIN_PUBLIC 0
 fi
 setcfg DW_PORT "$port"
 setcfg DW_BIND "$bind"

@@ -11,8 +11,8 @@ def main():
     if host=='0.0.0.0':
         if os.environ.get('DW_SESSION_SECURE')!='1':
             raise SystemExit('Refusing public HTTP without secure session cookie')
-        if os.environ.get('DW_PASSWORD_TYPE')!='strong':
-            raise SystemExit('Public access requires strong password, not a four-digit PIN')
+        if os.environ.get('DW_PASSWORD_TYPE')!='strong' and os.environ.get('DW_ALLOW_SHORT_PIN_PUBLIC')!='1':
+            raise SystemExit('Public PIN access requires explicit confirmation (DW_ALLOW_SHORT_PIN_PUBLIC=1)')
         cert=os.environ.get('DW_TLS_CERT','/etc/darkwatch/tls/server.crt')
         key=os.environ.get('DW_TLS_KEY','/etc/darkwatch/tls/server.key')
         if not (os.path.isfile(cert) and os.path.isfile(key)):

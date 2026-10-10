@@ -115,7 +115,7 @@ def test_custom_port_and_https_gate(monkeypatch, tmp_path):
     monkeypatch.setenv('DW_BIND','0.0.0.0')
     monkeypatch.setenv('DW_SESSION_SECURE','1')
     monkeypatch.setenv('DW_PASSWORD_TYPE','pin-or-strong')
-    with pytest.raises(SystemExit,match='strong password'):
+    with pytest.raises(SystemExit,match='explicit confirmation'):
         server.main()
     key=tmp_path/'key'; crt=tmp_path/'crt'
     key.write_text('test'); crt.write_text('test')
@@ -124,3 +124,18 @@ def test_custom_port_and_https_gate(monkeypatch, tmp_path):
     monkeypatch.setenv('DW_TLS_CERT',str(crt))
     server.main()
     assert called[-1]['ssl_keyfile']==str(key)
+    monkeypatch.setenv('DW_PASSWORD_TYPE','pin')
+    monkeypatch.setenv('DW_ALLOW_SHORT_PIN_PUBLIC','1')
+    server.main()
+    assert called[-1]['port']==15432
+
+
+def test_public_pin_wizard_and_password_reset():
+    from pathlib import Path
+    base=Path(__file__).resolve().parents[1]
+    installer=(base/'install.sh').read_text()
+    access=(base/'configure-access.sh').read_text()
+    assert 'hash-password --with-type' in installer
+    assert 'Change existing PIN/password?' in access
+    assert 'DW_ALLOW_SHORT_PIN_PUBLIC' in access
+    assert 'DW_FIRST_INSTALL' in installer

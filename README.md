@@ -127,3 +127,7 @@ The installer accepts **exactly four ASCII digits** as a personal PIN (or a regu
 
 ## v0.1.2 — configurable port / printed address
 Installation now asks for TCP port (1024-65535) and access mode, then prints the panel URL when the service is active. Direct HTTPS works at `https://SERVER-IP:PORT` with a self-signed TLS certificate and requires a password of at least 12 characters. Four-digit PIN is available only in private SSH tunnel mode. No firewall, SSH or tunnel configurations are modified automatically.
+
+
+## PIN/password setup fix (v0.1.3)
+On first install, choose a four-digit numeric PIN or 12+ character password. Public HTTPS no longer forces a second 12-character password. To use a short PIN with direct HTTPS, you must type YES to acknowledge the risk; HTTPS does NOT protect against PIN guessing, and an IP allowlist or a private tunnel is strongly recommended. On reinstall, answer 'y' to 'Change existing PIN/password?' to reset the PIN. Server entries, database and SSH keys are retained.
