@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import auth, db, settings
+from app.cli import valid_password
 from app.collector import SCRIPT, parse_output, rate_metrics
 from app.main import app
 
@@ -82,3 +83,17 @@ def test_live_proc_sampler():
     assert next_metrics['cpu'] == 25.0
     assert next_metrics['rx_bps'] == 4_000_000
     assert next_metrics['tx_bps'] == 8_000_000
+
+def test_password_policy_local_pin():
+    for good in ('0000', '1234', '9876', 'VeryLongPassword123'):
+        assert valid_password(good)
+    for bad in ('123', '12345', 'abcd', '١٢٣٤', '1234a', 'short'):
+        assert not valid_password(bad)
+
+
+def test_four_digit_pin_login(client, monkeypatch):
+    monkeypatch.setattr(settings, 'PASSWORD_HASH', auth.new_hash('1234'))
+    bad = client.post('/api/login', json={'username':'admin','password':'0000'})
+    assert bad.status_code == 401
+    good = client.post('/api/login', json={'username':'admin','password':'1234'})
+    assert good.status_code == 200

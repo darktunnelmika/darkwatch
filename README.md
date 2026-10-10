@@ -11,7 +11,7 @@
 - Agentless: the central hub connects to existing Linux servers over SSH; no changes to tunnels, network interfaces or firewall
 - Single personal admin, secure cookie, CSRF validation, and SSH host-key checks
 
-**Scope v0.1.0:** live data + in-memory graphs; graph history resets on reboot. No long-term historical DB, no Telegram notifications, no file editor, no server reboot/automated commands. This is intentionally a personal observation tool, not a commercial NOC product.
+**Scope v0.1.1:** live data + in-memory graphs; graph history resets on reboot. No long-term historical DB, no Telegram notifications, no file editor, no server reboot/automated commands. This is intentionally a personal observation tool, not a commercial NOC product.
 
 ## Requirements
 
@@ -44,7 +44,7 @@ sudo bash install.sh
 sudo systemctl status darkwatch --no-pager
 ```
 
-The installer prompts for a password with at least 12 characters and admin username on first install. It registers `darkwatch.service`, creates a dedicated unprivileged `darkwatch` system user, generates an Ed25519 SSH key, and binds the web server **only to 127.0.0.1:8765**.
+The installer prompts for a password with either a 4-digit numeric PIN (SSH tunnel only) or a 12+ character password and admin username on first install. It registers `darkwatch.service`, creates a dedicated unprivileged `darkwatch` system user, generates an Ed25519 SSH key, and binds the web server **only to 127.0.0.1:8765**.
 
 **Local access without a domain:** from your Windows PowerShell terminal:
 
@@ -119,3 +119,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8765
 ## License
 
 DarkWatch application code: for personal use / adaptation. Bundled `xterm.js` and `xterm-fit` client-side terminal dependencies are third-party MIT-licensed code and remain under their original terms. Read `THIRD_PARTY.md`.
+
+### Local PIN support (v0.1.1)
+
+The installer accepts **exactly four ASCII digits** as a personal PIN (or a regular password of 12 or more characters). A four-digit PIN is weak: **do not expose this web application publicly** if using a PIN. Keep binding to `127.0.0.1` and access it only through your SSH tunnel. If setup was interrupted by a password rejection, re-run `bootstrap.sh` to resume installation.

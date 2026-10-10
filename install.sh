@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+trap 'printf "[DARKWATCH] Install failed at line %s (exit %s). Service was not started.\n" "$LINENO" "$?" >&2' ERR
 if [[ $EUID -ne 0 ]]; then echo 'Run as root: sudo bash install.sh'; exit 1; fi
 if ! command -v python3 >/dev/null || ! command -v ssh >/dev/null; then
   echo 'Install first: apt update && apt install -y python3 python3-venv openssh-client'; exit 1
@@ -23,8 +24,10 @@ if [[ ! -f /var/lib/darkwatch/.ssh/id_ed25519 ]]; then
   runuser -u darkwatch -- ssh-keygen -q -t ed25519 -f /var/lib/darkwatch/.ssh/id_ed25519 -N ''
 fi
 if [[ ! -f /etc/darkwatch/env ]]; then
-  echo 'Create the login password (minimum 12 characters):'
-  hash="$(cd /opt/darkwatch && /opt/darkwatch/.venv/bin/python -m app.cli hash-password)"
+  echo 'Choose a 4-digit numeric PIN (local SSH tunnel ONLY), or a stronger password (12+ characters):'
+  until hash="$(cd /opt/darkwatch && /opt/darkwatch/.venv/bin/python -m app.cli hash-password)"; do
+    echo 'Password was not accepted. Try again (Ctrl-C to cancel).' >&2
+  done
   while true; do
     read -rp 'Admin username [admin]: ' username
     username="${username:-admin}"
