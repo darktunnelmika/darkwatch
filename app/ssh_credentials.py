@@ -108,7 +108,8 @@ def collect_password_metrics(server, password, script, confirmed=None):
             raise ValueError('Remote metrics command failed')
         if b'__END__' not in output:
             raise ValueError('Incomplete metrics response')
-        # Only pin an unknown key after successful login AND valid command output.\n        save_verified_host_key(policy)
+        # Pin a new host key only after authentication and valid metric output.
+        save_verified_host_key(policy)
         return output
     finally:
         client.close()
