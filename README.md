@@ -166,3 +166,15 @@ working for servers configured using the previous method.
 For internet-facing installation, use a **strong admin password and an IP
 allowlist**. A 4-digit panel PIN is not sufficient protection for a tool
 that stores SSH credentials and exposes browser terminals.
+
+
+### Server list reliability
+
+- Add a server with IP/domain, SSH port, SSH user and SSH password. First connection
+  may request host-key fingerprint confirmation; verify it against your provider console.
+- Re-adding the same IP, SSH port and SSH user after a failed setup securely checks
+  the password and updates the **existing** entry rather than creating a duplicate.
+- The delete button removes the monitoring record and its encrypted SSH credential
+  from DARKWATCH **only**; it never deletes anything from the remote VPS.
+- Updates use `update.sh` exclusively and verify both HTML and JavaScript are
+  served before reporting success. The configured port and database are retained.

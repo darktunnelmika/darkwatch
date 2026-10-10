@@ -120,7 +120,7 @@ def origin_ok(origin: str, host: str):
 
 @app.get('/api/me')
 def me(sess=Depends(current_session)):
-    return {'username': settings.ADMIN_USER, 'csrf': sess['csrf'], 'version':'0.1.1'}
+    return {'username': settings.ADMIN_USER, 'csrf': sess['csrf'], 'version':'0.1.4'}
 
 @app.post('/api/logout')
 def logout(request: Request, _=Depends(verify_csrf)):
@@ -202,10 +202,17 @@ def create_server(data: ServerInput, _=Depends(verify_csrf)):
         try:
             sid = db.add_password_server(values, encrypted)
         except Exception as exc:
-            if 'UNIQUE' in str(exc): raise HTTPException(409,'این سرور از قبل اضافه شده؛ از گزینه تغییر رمز SSH استفاده کن')
+            if 'UNIQUE' in str(exc):
+                # Re-adding an already registered host should repair its SSH
+                # credentials, not create a duplicate or a confusing error.
+                sid = db.find_existing_server(values['host'], values['port'], values['ssh_user'])
+                if sid is None or not db.set_password(sid, encrypted):
+                    raise HTTPException(409,'سرور قبلاً ثبت شده ولی به‌روزرسانی اطلاعات SSH ناموفق بود')
+                monitor.clear(sid)
+                return {'id':sid, 'ok':True, 'updated':True}
             raise
         monitor.clear(sid)
-        return {'id':sid, 'ok':True}
+        return {'id':sid, 'ok':True, 'updated':False}
     # Existing SSH-key workflow remains backwards-compatible.
     try:
         sid = db.add_server(values)

@@ -46,6 +46,23 @@ chown -R root:root /opt/darkwatch/app /opt/darkwatch/requirements.txt
 systemctl restart darkwatch
 sleep 2
 systemctl is-active --quiet darkwatch
+# Check that pages are actually served; "active" alone is not enough.
+port="$(sed -n 's/^DW_PORT=//p' /etc/darkwatch/env | tail -1)"
+bind="$(sed -n 's/^DW_BIND=//p' /etc/darkwatch/env | tail -1)"
+protocol=http
+if [[ "$bind" == '0.0.0.0' ]]; then protocol=https; fi
+if [[ ! "$port" =~ ^[0-9]+$ ]]; then port=8765; fi
+ready=0
+for attempt in 1 2 3; do
+  web_code="$(curl -ksS --connect-timeout 2 --max-time 8 -o /dev/null -w '%{http_code}' "$protocol://127.0.0.1:$port/" || true)"
+  assets_code="$(curl -ksS --connect-timeout 2 --max-time 8 -o /dev/null -w '%{http_code}' "$protocol://127.0.0.1:$port/static/app.js" || true)"
+  if [[ "$web_code" == 200 && "$assets_code" == 200 ]]; then ready=1; break; fi
+  sleep 1
+done
+if [[ "$ready" != 1 ]]; then
+  echo "[DARKWATCH] Web health-check failed (HTML=$web_code, JS=$assets_code). Rolling back." >&2
+  false
+fi
 trap - ERR
 rm -rf "$backup"
 echo ''

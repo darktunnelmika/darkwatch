@@ -277,3 +277,41 @@ def test_bootstrap_never_starts_with_black_blank_screen(client):
     assert "showLogin();" in script
     assert client.get('/').status_code == 200
 
+
+
+def test_reregister_existing_server_repairs_ssh_password_without_duplicate(client, monkeypatch, tmp_path):
+    from app import ssh_credentials
+    monkeypatch.setattr(settings, 'DATA_DIR', tmp_path / 'credential-storage')
+    def fake_probe(server, password, script, confirmed=None):
+        assert password == 'another-good-SSH-password'
+        return subprocess.run(
+            ['sh','-s'], input=SCRIPT, capture_output=True, text=True, check=True
+        ).stdout.encode()
+    monkeypatch.setattr(ssh_credentials, 'collect_password_metrics', fake_probe)
+    original = db.add_server({'name':'Existing Iran','host':'192.0.2.55','port':22,
+                              'ssh_user':'root','group_name':'ایران'})
+    assert db.get_encrypted_password(original) is None
+    csrf=login(client)
+    res=client.post('/api/servers', headers={'X-CSRF-Token':csrf},
+        json={'name':'Duplicate Iran','host':'192.0.2.55','port':22,'ssh_user':'root',
+              'group_name':'ایران','ssh_password':'another-good-SSH-password'})
+    assert res.status_code == 201
+    assert res.json()['updated'] is True
+    assert res.json()['id'] == original
+    saved=client.get('/api/servers').json()
+    assert len(saved)==1
+    assert saved[0]['name']=='Existing Iran'
+    assert ssh_credentials.decrypt_password(db.get_encrypted_password(original)) == 'another-good-SSH-password'
+    assert client.delete(f'/api/servers/{original}',headers={'X-CSRF-Token':csrf}).status_code==200
+    assert db.get_encrypted_password(original) is None
+
+
+def test_update_is_in_place_and_checks_web_assets():
+    from pathlib import Path
+    update=(Path(__file__).resolve().parents[1]/'update.sh').read_text()
+    assert '/etc/darkwatch/env' in update
+    assert '/opt/darkwatch/app' in update
+    assert '/static/app.js' in update
+    assert '/opt/darkwatch/requirements.txt' in update
+    assert 'configure-access.sh' not in update.replace(
+        '# DARKWATCH in-place update. Never run install.sh or configure-access.sh.','')

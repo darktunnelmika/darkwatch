@@ -37,6 +37,14 @@ def servers():
     with connect() as db:
         return [dict(r) for r in db.execute('SELECT * FROM servers ORDER BY id')]
 
+def find_existing_server(host, port, ssh_user):
+    """Find an existing registration without returning SSH credentials."""
+    with connect() as conn:
+        row=conn.execute('SELECT id FROM servers WHERE host=? AND port=? AND ssh_user=?',
+                         (host,port,ssh_user)).fetchone()
+        return row['id'] if row else None
+
+
 def get_server(server_id):
     with connect() as db:
         row = db.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()

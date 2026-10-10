@@ -72,7 +72,7 @@
   $$('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;$$('.filter').forEach(c=>c.classList.toggle('active',b===c));if(state)renderCards(state.servers)}));
   $('#display-mode').addEventListener('click',()=>{document.body.classList.toggle('display-mode');setTimeout(drawCharts,80)});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('display-mode'))document.body.classList.remove('display-mode')});
-  $('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
+  $$('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
     const form=$('#server-form');form.querySelectorAll('input').forEach(e=>e.disabled=false);
     form.reset();delete form.dataset.passwordServer;
     $text('#server-modal-title','افزودن سرور جدید');
@@ -81,30 +81,43 @@
   $$('.modal-close').forEach(b=>b.addEventListener('click',()=>$('#add-modal').close()));
   $('#server-form').addEventListener('submit',async e=>{
     e.preventDefault();
-    const form=e.target, editing=form.dataset.passwordServer;
+    const form=e.target;
+    const button=form.querySelector('button[type="submit"]');
+    if(button.disabled)return;
+    const editing=form.dataset.passwordServer;
     const d=Object.fromEntries(new FormData(form));
     if(!editing)d.port=Number(d.port);
     const target=editing?`/api/servers/${editing}/ssh-password`:'/api/servers';
     const method=editing?'PUT':'POST';
-    const button=form.querySelector('button[type="submit"]');
-    button.disabled=true;$text('#form-error','');
+    const originalLabel=button.textContent;
+    button.disabled=true;
+    button.textContent='در حال بررسی اتصال SSH...';
+    $text('#form-error','');
     try{
-      try{await api(target,{method,body:JSON.stringify(d)})}
+      let result;
+      try{result=await api(target,{method,body:JSON.stringify(d),timeoutMs:45000})}
       catch(err){
         if(err.details?.type!=='host_key')throw err;
         const fp=err.details.fingerprint;
         const accepted=window.confirm(
-          `کلید SSH این سرور برای اولین بار دیده شده است.\n\nاثر انگشت:\n${fp}\n\nفقط بعد از تطبیق با اثر انگشت سرور در کنسول دیتاسنتر، OK را بزن. اتصال بدون تأیید ذخیره نمی‌شود.`);
-        if(!accepted)return;
+          `اثر انگشت کلید SSH سرور:\n\n${fp}\n\nلطفاً این مقدار را از کنسول دیتاسنتر بررسی کن.\nاگر دقیقاً مطابقت دارد OK را بزن؛ در غیر این صورت Cancel.`);
+        if(!accepted){
+          $text('#form-error','اتصال لغو شد؛ تا تأیید اثر انگشت، اطلاعاتی ذخیره نمی‌شود.');
+          return;
+        }
         d.trust_fingerprint=fp;
-        await api(target,{method,body:JSON.stringify(d)});
+        result=await api(target,{method,body:JSON.stringify(d),timeoutMs:45000});
       }
       form.querySelector('input[name="ssh_password"]').value='';
       $('#add-modal').close();
-      popup(editing?'رمز SSH با موفقیت بررسی و به‌روزرسانی شد':'اتصال SSH تأیید شد و سرور اضافه شد');
-      await poll();
-    }catch(err){$text('#form-error',err.message)}
-    finally{button.disabled=false}
+      popup(editing?'رمز SSH بررسی و به‌روزرسانی شد':result?.updated?'این سرور قبلاً وجود داشت؛ اطلاعات SSH آن به‌روزرسانی شد':'اتصال SSH تأیید شد؛ سرور اضافه شد');
+      await poll({force:true});
+    }catch(err){
+      $text('#form-error',err.message||'افزودن سرور ناموفق بود؛ اتصال و اطلاعات SSH را بررسی کن.');
+    }finally{
+      button.disabled=false;
+      button.textContent=originalLabel;
+    }
   });
   $('#search-server').addEventListener('input',()=>{if(state)renderTable(state.servers)});
   $$('[data-copy]').forEach(e=>e.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(e.dataset.copy);popup('دستور کپی شد')}catch(err){popup('مرورگر اجازه کپی ندارد')}}));
@@ -125,16 +138,22 @@
   function renderCards(servers){
     const items=servers.filter(s=>filter==='all'||(filter==='online'?s.online:!s.online));
     $('#server-cards').innerHTML=items.map(card).join('')||'<div class="muted">سروری در این وضعیت پیدا نشد.</div>';
-    attachCardActions();
     for(const s of items){let el=$(`[data-spark="${s.id}"]`); if(el) drawMini(el,sparkFor(s))}
   }
   function sparkFor(s){return (s.history||[]).map(p=>p.rx??0)}
-  function attachCardActions(){
-    $('.password-button').forEach(b=>b.addEventListener('click',()=>{
-      const s=(state?.servers||[]).find(x=>x.id===Number(b.dataset.password));
+  // One delegated handler survives the 3-second card/table re-render.
+  // Avoids both duplicate DELETE requests and dead buttons on re-render.
+  const pendingDeletes=new Set();
+  $('#application').addEventListener('click',async event=>{
+    const button=event.target.closest('[data-password],[data-ssh],[data-delete]');
+    if(!button||!$('#application').contains(button))return;
+    if(button.hasAttribute('data-password')){
+      const sid=Number(button.dataset.password);
+      const s=(state?.servers||[]).find(x=>x.id===sid);
       if(!s)return;
       const form=$('#server-form');
-      form.reset();form.dataset.passwordServer=String(s.id);
+      form.reset();
+      form.dataset.passwordServer=String(s.id);
       form.elements.namedItem('name').value=s.name;
       form.elements.namedItem('host').value=s.host;
       form.elements.namedItem('port').value=s.port||22;
@@ -143,22 +162,49 @@
       form.querySelectorAll('input').forEach(el=>{el.disabled=el.name!=='ssh_password'});
       form.elements.namedItem('ssh_password').value='';
       $text('#server-modal-title','تغییر رمز SSH سرور');
-      $text('#form-error','');$('#add-modal').showModal();
-    }));
-    $('.ssh-button').forEach(b=>b.addEventListener('click',()=>openTerminal(Number(b.dataset.ssh))));
-    $$('[data-delete]').forEach(b=>b.addEventListener('click',async()=>{
-      const sid=Number(b.dataset.delete),server=(state?.servers||[]).find(s=>s.id===sid);
-      if(!window.confirm(`«${server?.name||'سرور'}» از پنل حذف شود؟ خود سرور یا فایل‌های آن تغییری نمی‌کند.`))return;
-      try{await api('/api/servers/'+sid,{method:'DELETE'});popup('سرور از پنل حذف شد');await poll()}catch(err){popup(err.message)}
-    }));
-  }
+      $text('#form-error','');
+      $('#add-modal').showModal();
+      return;
+    }
+    if(button.hasAttribute('data-ssh')){
+      openTerminal(Number(button.dataset.ssh));
+      return;
+    }
+    if(button.hasAttribute('data-delete')){
+      const sid=Number(button.dataset.delete);
+      if(!Number.isSafeInteger(sid)||sid<1||pendingDeletes.has(sid))return;
+      pendingDeletes.add(sid);
+      try{
+        const server=(state?.servers||[]).find(s=>s.id===sid);
+        if(!window.confirm(`«${server?.name||'سرور'}» از فهرست مانیتورینگ حذف شود؟\nخود سرور، فایل‌ها و سرویس‌های آن دست‌نخورده می‌مانند.`))return;
+        button.disabled=true;
+        try{
+          await api('/api/servers/'+sid,{method:'DELETE',timeoutMs:20000});
+        }catch(err){
+          if(!String(err.message).includes('HTTP 404')&&!String(err.message).includes('سرور پیدا نشد'))throw err;
+          // Already removed on the server (e.g. request retried).
+        }
+        if(state){
+          state.servers=state.servers.filter(s=>s.id!==sid);
+          state.summary.total=state.servers.length;
+          state.summary.online=state.servers.filter(s=>s.online).length;
+          state.summary.offline=state.summary.total-state.summary.online;
+          state.summary.rx_bps=state.servers.filter(s=>s.online).reduce((t,s)=>t+(s.rx_bps||0),0);
+          state.summary.tx_bps=state.servers.filter(s=>s.online).reduce((t,s)=>t+(s.tx_bps||0),0);
+          render(state);
+        }
+        popup('سرور فقط از فهرست پنل حذف شد');
+        await poll({force:true});
+      }catch(err){popup('حذف سرور انجام نشد: '+(err.message||'خطای نامشخص'))}
+      finally{pendingDeletes.delete(sid);button.disabled=false}
+    }
+  });
   function renderTable(servers){
     const search=$('#search-server').value.trim().toLowerCase();
     const items=servers.filter(s=>[s.name,s.host,s.group].some(x=>String(x||'').toLowerCase().includes(search)));
     $text('#table-count',`${items.length} سرور`);
     $('#server-table').innerHTML=items.map(s=>`<tr><td><span class="table-name">${esc(s.name)}</span><div class="table-ip">${esc(s.host)}${s.id===0?'':' · '+esc(s.group)}</div></td><td><span class="table-status ${s.online?'':'down'}">● ${s.online?'آنلاین':'آفلاین'}</span></td>
       <td class="mono">${pct(s.cpu)}</td><td class="mono">${pct(s.memory_percent)}</td><td class="mono"><span class="cyan">${bitFmt(hostNetwork(s).rx_bps)}</span> / <span class="violet">${bitFmt(hostNetwork(s).tx_bps)}</span></td><td><div class="table-actions">${detailsButtons(s,s.id===0)}</div></td></tr>`).join('');
-    attachCardActions();
   }
   function renderTraffic(servers){
     $('#traffic-rows').innerHTML=servers.map(s=>`<div class="traffic-row"><span>${esc(s.name)}<br><small class="muted">${esc((s.network_interfaces||[s.primary_interface]).filter(Boolean).join(' + ')||'—')}</small></span><span class="mono cyan">↓ ${s.online?bitFmt(hostNetwork(s).rx_bps):'—'}</span><span class="mono violet">↑ ${s.online?bitFmt(hostNetwork(s).tx_bps):'—'}</span><span class="muted">${s.online?'● ONLINE':'○ OFFLINE'}</span></div>`).join('');
@@ -212,10 +258,22 @@
   function drawMini(canvas,history){plot(canvas,(history||[]).map(rx=>({rx:rx})),true)}
   function drawCharts(){plot($('#overview-chart'),aggHistory);plot($('#network-chart'),aggHistory)}
   window.addEventListener('resize',()=>{if(chartResizeScheduled)return;chartResizeScheduled=true;requestAnimationFrame(()=>{chartResizeScheduled=false;drawCharts();if(state)for(const s of state.servers){const e=$(`[data-spark="${s.id}"]`);if(e)drawMini(e,sparkFor(s))}if(currentTerm?.fit)currentTerm.fit()})});
-  async function poll(){
-    if(isPolling||$('#application').classList.contains('hidden'))return;
+  let refreshSerial=0;
+  async function poll(options={}){
+    if($('#application').classList.contains('hidden'))return;
+    if(isPolling&&!options.force)return;
+    const serial=++refreshSerial;
     isPolling=true;
-    try{const result=await api('/api/state');state=result;render(result)}catch(err){$text('#sync-indicator','DISCONNECTED')}finally{isPolling=false}
+    try{
+      const result=await api('/api/state',{timeoutMs:15000});
+      if(serial!==refreshSerial)return; // Ignore stale overlapping refreshes.
+      if(pendingDeletes.size)result.servers=result.servers.filter(s=>!pendingDeletes.has(s.id));
+      state=result;render(result);
+    }catch(err){
+      if(serial===refreshSerial)$text('#sync-indicator','DISCONNECTED');
+    }finally{
+      if(serial===refreshSerial)isPolling=false;
+    }
   }
   setInterval(poll,3000);
   setInterval(()=>$text('#current-clock',new Date().toLocaleTimeString('en-GB',{hour12:false})),1000);
