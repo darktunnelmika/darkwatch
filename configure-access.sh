@@ -54,14 +54,10 @@ PYIP
     echo "Please enter a valid IPv4 address."
   done
   bind=0.0.0.0
+  # Direct HTTPS mode is explicitly selected by the operator.
+  # Accept the configured 4-digit PIN without a second YES prompt.
+  # The web login rate limiter remains enabled.
   if [[ "$(getcfg DW_PASSWORD_TYPE)" != strong ]]; then
-    echo 'SECURITY WARNING: A 4-digit PIN is weak for public access to a web SSH terminal.'
-    echo 'HTTPS does not stop PIN guessing. Restrict source IPs in your datacenter firewall.'
-    read -rp 'Type YES to enable direct HTTPS with this PIN: ' acknowledgement
-    if [[ "$acknowledgement" != YES ]]; then
-      echo 'Direct PIN access cancelled. Choose private mode or a stronger password.' >&2
-      exit 1
-    fi
     setcfg DW_ALLOW_SHORT_PIN_PUBLIC 1
   else
     setcfg DW_ALLOW_SHORT_PIN_PUBLIC 0
