@@ -127,14 +127,35 @@
   $('#search-server').addEventListener('input',()=>{if(state)renderTable(state.servers)});
   $$('[data-copy]').forEach(e=>e.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(e.dataset.copy);popup('دستور کپی شد')}catch(err){popup('مرورگر اجازه کپی ندارد')}}));
   function detailsButtons(s, local=false){return `<div class="card-buttons">${local?'':`<button class="sm-btn ssh-button" data-ssh="${s.id}">⌘ SSH</button><button class="sm-btn password-button" data-password="${s.id}" title="تغییر رمز اتصال SSH">🔑</button><button class="sm-btn remove" data-delete="${s.id}" title="حذف از فهرست (بدون تغییر در سرور)">✕</button>`}</div>`}
-  function statBar(label,value,color){const v=Math.min(100,Math.max(0,value||0));return `<div><div class="stat-label">${label}</div><div class="stat-value">${pct(value)}</div><div class="stat-track"><div class="${color}" style="width:${v}%"></div></div></div>`}
+  function vcpuFmt(cores){
+    const n=Number(cores);
+    return Number.isInteger(n)&&n>0?`${n} vCPU`:'—';
+  }
+  function capacityFmt(used,total){
+    const all=Number(total),usedBytes=Number(used);
+    if(!Number.isFinite(all)||all<=0||!Number.isFinite(usedBytes)||usedBytes<0)return '—';
+    const units=['B','KB','MB','GB','TB','PB'];
+    let index=0,scale=1;
+    while(index<units.length-1&&all/scale>=1024){scale*=1024;index++;}
+    const compact=value=>{
+      const digits=(index===0||value>=100)?0:1;
+      return value.toFixed(digits).replace(/\.0$/,'');
+    };
+    return `${compact(usedBytes/scale)} / ${compact(all/scale)} ${units[index]}`;
+  }
+  function statBar(label,value,color,detail){
+    const v=Math.min(100,Math.max(0,Number(value)||0));
+    const labelDetail=esc(detail||'—');
+    return `<div class="resource-stat"><div class="stat-label">${label}</div><div class="stat-value">${pct(value)}</div><div class="stat-track"><div class="${color}" style="width:${v}%"></div></div><div class="stat-detail" title="${labelDetail}">${labelDetail}</div></div>`;
+  }
   function hostNetwork(s){return {rx_bps:s.rx_bps||0,tx_bps:s.tx_bps||0,rx_bytes:s.rx_total||0,tx_bytes:s.tx_total||0}}
   function card(s){
     const online=!!s.online, net=hostNetwork(s);
     const scope=s.network_scope==='default-interface'?'شبکه اصلی سرور':'مجموع ترافیک سرور';
     return `<article class="server-card ${online?'':'offline'}">
       <div class="server-top"><div class="server-identity"><div class="server-avatar">▣</div><div style="min-width:0"><div class="server-title" title="${esc(s.name)}">${esc(s.name)}</div><div class="server-ip">${esc(s.host)}</div></div></div><span class="online-chip ${online?'':'down'}">● ${online?'ONLINE':'OFFLINE'}</span></div>
-      ${online?`<div class="server-divider"></div><div class="server-stats">${statBar('CPU',s.cpu,'')}${statBar('RAM',s.memory_percent,'purple')}${statBar('DISK',s.disk_percent,'green')}</div>
+      ${online?`<div class="server-divider"></div><div class="server-stats">${statBar('CPU',s.cpu,'',vcpuFmt(s.cores))}${statBar('RAM',s.memory_percent,'purple',capacityFmt(s.memory_used,s.memory_total))}${statBar('DISK /',s.disk_percent,'green',capacityFmt(s.disk_used,s.disk_total))}</div>
+      <div class="server-swap"><span>SWAP</span><strong dir="ltr">${s.swap_total>0?capacityFmt(s.swap_used,s.swap_total):'0 GB'}</strong></div>
       <div class="network-values"><div class="network-val"><small>↓ RX / DOWNLOAD</small><strong class="cyan">${bitFmt(net.rx_bps)}</strong></div><div class="network-val"><small>↑ TX / UPLOAD</small><strong class="violet">${bitFmt(net.tx_bps)}</strong></div></div>
       <div class="iface-toolbar"><span>${scope}</span><span>RX ${byteFmt(net.rx_bytes)} · TX ${byteFmt(net.tx_bytes)}</span></div>
       <canvas class="server-spark" data-spark="${s.id}"></canvas>`:`<div class="server-error"><span>⌁</span>${esc(s.error||'در حال اتصال به سرور...')}</div>`}
@@ -209,8 +230,14 @@
     const search=$('#search-server').value.trim().toLowerCase();
     const items=servers.filter(s=>[s.name,s.host,s.group].some(x=>String(x||'').toLowerCase().includes(search)));
     $text('#table-count',`${items.length} سرور`);
-    $('#server-table').innerHTML=items.map(s=>`<tr><td><span class="table-name">${esc(s.name)}</span><div class="table-ip">${esc(s.host)}${s.id===0?'':' · '+esc(s.group)}</div></td><td><span class="table-status ${s.online?'':'down'}">● ${s.online?'آنلاین':'آفلاین'}</span></td>
-      <td class="mono">${pct(s.cpu)}</td><td class="mono">${pct(s.memory_percent)}</td><td class="mono"><span class="cyan">${bitFmt(hostNetwork(s).rx_bps)}</span> / <span class="violet">${bitFmt(hostNetwork(s).tx_bps)}</span></td><td><div class="table-actions">${detailsButtons(s,s.id===0)}</div></td></tr>`).join('');
+    $('#server-table').innerHTML=items.map(s=>{
+      const specs=s.online?`<div class="table-specs" aria-label="مشخصات منابع سرور"><span>${vcpuFmt(s.cores)}</span><span>RAM ${byteFmt(s.memory_total)}</span><span>DISK ${byteFmt(s.disk_total)}</span></div>`:'';
+      return `<tr><td><span class="table-name">${esc(s.name)}</span><div class="table-ip">${esc(s.host)}${s.id===0?'':' · '+esc(s.group)}</div>${specs}</td><td><span class="table-status ${s.online?'':'down'}">● ${s.online?'آنلاین':'آفلاین'}</span></td>
+        <td class="mono"><span class="table-primary">${pct(s.cpu)}</span><small class="table-resource-detail">${s.online?vcpuFmt(s.cores):'—'}</small></td>
+        <td class="mono"><span class="table-primary">${pct(s.memory_percent)}</span><small class="table-resource-detail">${s.online?capacityFmt(s.memory_used,s.memory_total):'—'}</small></td>
+        <td class="mono"><span class="cyan">${bitFmt(hostNetwork(s).rx_bps)}</span> / <span class="violet">${bitFmt(hostNetwork(s).tx_bps)}</span></td>
+        <td><div class="table-actions">${detailsButtons(s,s.id===0)}</div></td></tr>`;
+    }).join('');
   }
   function renderTraffic(servers){
     $('#traffic-rows').innerHTML=servers.map(s=>`<div class="traffic-row"><span>${esc(s.name)}<br><small class="muted">${esc((s.network_interfaces||[s.primary_interface]).filter(Boolean).join(' + ')||'—')}</small></span><span class="mono cyan">↓ ${s.online?bitFmt(hostNetwork(s).rx_bps):'—'}</span><span class="mono violet">↑ ${s.online?bitFmt(hostNetwork(s).tx_bps):'—'}</span><span class="muted">${s.online?'● ONLINE':'○ OFFLINE'}</span></div>`).join('');

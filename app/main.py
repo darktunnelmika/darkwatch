@@ -120,7 +120,7 @@ def origin_ok(origin: str, host: str):
 
 @app.get('/api/me')
 def me(sess=Depends(current_session)):
-    return {'username': settings.ADMIN_USER, 'csrf': sess['csrf'], 'version':'0.1.6'}
+    return {'username': settings.ADMIN_USER, 'csrf': sess['csrf'], 'version':'0.1.7'}
 
 @app.post('/api/logout')
 def logout(request: Request, _=Depends(verify_csrf)):

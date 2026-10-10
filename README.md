@@ -227,3 +227,22 @@ KPI tiles, filter bar, charts and add-server dialog fit the viewport. Preserves
 normal pinch zoom and uses >=16px form input text to avoid iOS automatic zoom.
 Desktop/tablet layouts are unchanged. This is a frontend-only update and does
 not alter server data, SSH secrets, panel port or network monitoring logic.
+
+
+## Resource capacities (v0.1.7)
+
+Each server card displays:
+- logical CPU cores (vCPU) together with live CPU utilization percent
+- used / total RAM plus its utilization percentage
+- used / total root-filesystem disk capacity plus utilization percentage
+- used / total Swap (or 0 GB when disabled)
+- live network RX/TX and uptime as before
+
+The server inventory also shows vCPU and RAM usage/capacity, with a concise
+hardware summary below each server name. These fields reuse existing Linux
+`/proc/stat`, `/proc/meminfo` and `df -P -B1 /` readings;
+**no extra agent, root permissions, SSH changes or polling requests** are needed.
+CPU represents logical processors/vCPUs, not necessarily physical cores.
+Disk figures cover the root filesystem (`/`), not every mounted disk.
+Updates via `update.sh` preserve the existing dashboard port, administrator
+credentials and saved VPS entries.

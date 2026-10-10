@@ -414,8 +414,8 @@ def test_mobile_nav_is_a_bottom_dock_and_pages_fit_viewport(client):
     css=client.get('/static/style.css').text
     assert page.count('class="nav-mobile-copy"') == 4
     assert 'class="logout-mobile-copy"' in page
-    assert 'style.css?v=0.1.6' in page
-    assert 'app.js?v=0.1.6' in page
+    assert 'style.css?v=0.1.7' in page
+    assert 'app.js?v=0.1.7' in page
     assert '@media (max-width: 767px)' in css
     assert 'position: fixed; inset: auto 0 0 0' in css
     assert 'grid-template-columns: repeat(4,minmax(0,1fr))' in css
@@ -427,3 +427,32 @@ def test_mobile_nav_is_a_bottom_dock_and_pages_fit_viewport(client):
     assert 'font-size:16px!important' in css
     # Accessible pinch zoom must remain enabled; no maximum-scale or user-scalable=no.
     assert 'user-scalable=no' not in page
+
+
+def test_resource_capacity_fields_are_available_in_monitoring(client):
+    from app.collector import rate_metrics, parse_output, SCRIPT
+    import subprocess
+    txt = subprocess.run(['sh','-s'],input=SCRIPT,text=True,
+                         capture_output=True,check=True).stdout
+    snapshot = parse_output(txt)
+    metrics = rate_metrics(snapshot,None,100)
+    assert metrics['cores'] >= 1
+    assert metrics['memory_total'] >= metrics['memory_used'] >= 0
+    assert metrics['disk_total'] >= metrics['disk_used'] >= 0
+    assert metrics['swap_total'] >= metrics['swap_used'] >= 0
+
+
+def test_capacity_details_appear_in_server_cards_without_mobile_overflow(client):
+    html=client.get('/').text
+    js=client.get('/static/app.js').text
+    css=client.get('/static/style.css').text
+    assert 'app.js?v=0.1.7' in html
+    assert 'style.css?v=0.1.7' in html
+    assert 'function vcpuFmt(cores)' in js
+    assert 'function capacityFmt(used,total)' in js
+    assert "vcpuFmt(s.cores)" in js
+    assert 'capacityFmt(s.memory_used,s.memory_total)' in js
+    assert 'capacityFmt(s.disk_used,s.disk_total)' in js
+    assert 'capacityFmt(s.swap_used,s.swap_total)' in js
+    assert '.server-stats .stat-detail' in css
+    assert 'text-overflow:ellipsis' in css
