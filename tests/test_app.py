@@ -315,3 +315,15 @@ def test_update_is_in_place_and_checks_web_assets():
     assert '/opt/darkwatch/requirements.txt' in update
     assert 'configure-access.sh' not in update.replace(
         '# DARKWATCH in-place update. Never run install.sh or configure-access.sh.','')
+
+
+def test_root_password_is_explicit_in_add_server_form(client):
+    page=client.get('/').text
+    assert 'رمز عبور root سرور' in page
+    assert 'name="ssh_password" type="password"' in page
+    assert 'maxlength="1024" required' in page
+    assert 'name="ssh_user" value="root"' in page
+    assert 'پسورد root سرور مقصد' in page
+    js=client.get('/static/app.js').text
+    assert 'updateSshPasswordLabel' in js
+    assert 'if(!d.ssh_password)' in js

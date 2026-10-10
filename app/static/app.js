@@ -72,9 +72,20 @@
   $$('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;$$('.filter').forEach(c=>c.classList.toggle('active',b===c));if(state)renderCards(state.servers)}));
   $('#display-mode').addEventListener('click',()=>{document.body.classList.toggle('display-mode');setTimeout(drawCharts,80)});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('display-mode'))document.body.classList.remove('display-mode')});
-  $$('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
+  function updateSshPasswordLabel(){
+    const form=$('#server-form');
+    const user=(form.elements.namedItem('ssh_user').value||'root').trim()||'root';
+    const label=$('#ssh-password-label');
+    const input=form.elements.namedItem('ssh_password');
+    label.textContent=user==='root'?'رمز عبور root سرور':`رمز عبور SSH کاربر ${user}`;
+    input.placeholder=user==='root'?'پسورد root سرور مقصد (نه رمز پنل)':`پسورد SSH کاربر ${user}`;
+  }
+  $('#server-form [name="ssh_user"]').addEventListener('input',updateSshPasswordLabel);
+  updateSshPasswordLabel();
+  $('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
     const form=$('#server-form');form.querySelectorAll('input').forEach(e=>e.disabled=false);
     form.reset();delete form.dataset.passwordServer;
+    updateSshPasswordLabel();
     $text('#server-modal-title','افزودن سرور جدید');
     $('#form-error').textContent='';$('#add-modal').showModal();
   }));
@@ -86,6 +97,11 @@
     if(button.disabled)return;
     const editing=form.dataset.passwordServer;
     const d=Object.fromEntries(new FormData(form));
+    if(!d.ssh_password){
+      $text('#form-error','برای اتصال باید پسورد '+(d.ssh_user||'root')+' سرور را وارد کنی.');
+      form.elements.namedItem('ssh_password').focus();
+      return;
+    }
     if(!editing)d.port=Number(d.port);
     const target=editing?`/api/servers/${editing}/ssh-password`:'/api/servers';
     const method=editing?'PUT':'POST';
@@ -158,6 +174,7 @@
       form.elements.namedItem('host').value=s.host;
       form.elements.namedItem('port').value=s.port||22;
       form.elements.namedItem('ssh_user').value=s.ssh_user||'root';
+      updateSshPasswordLabel();
       form.elements.namedItem('group_name').value=s.group||'ایران';
       form.querySelectorAll('input').forEach(el=>{el.disabled=el.name!=='ssh_password'});
       form.elements.namedItem('ssh_password').value='';

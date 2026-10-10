@@ -178,3 +178,13 @@ that stores SSH credentials and exposes browser terminals.
   from DARKWATCH **only**; it never deletes anything from the remote VPS.
 - Updates use `update.sh` exclusively and verify both HTML and JavaScript are
   served before reporting success. The configured port and database are retained.
+
+
+### Root SSH password prompt
+
+In **Add Server**, the field is explicitly labelled **رمز عبور root سرور**
+when the SSH username is `root` (the default). This is the root SSH password
+on the **target VPS**, NOT the DARKWATCH admin PIN/password. The field is required
+in the web form, and the SSH connection is verified before saving the server.
+For another SSH username, the label changes automatically. Previously configured
+key-only servers are not modified.

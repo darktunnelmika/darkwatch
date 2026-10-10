@@ -90,6 +90,15 @@ async function run(){
     click('.add-server-btn');
     assert(doc.querySelector('#add-modal').hasAttribute('open'),'Add modal must open');
     const form=doc.querySelector('#server-form');
+    const passField=form.elements.namedItem('ssh_password');
+    assert(passField.required,'Root password is mandatory in the Add Server form');
+    assert.equal(doc.querySelector('#ssh-password-label').textContent,'رمز عبور root سرور');
+    form.elements.namedItem('ssh_user').value='operator';
+    form.elements.namedItem('ssh_user').dispatchEvent(new w.Event('input',{bubbles:true}));
+    assert(doc.querySelector('#ssh-password-label').textContent.includes('operator'),'Non-root SSH user label should update');
+    form.elements.namedItem('ssh_user').value='root';
+    form.elements.namedItem('ssh_user').dispatchEvent(new w.Event('input',{bubbles:true}));
+    assert.equal(doc.querySelector('#ssh-password-label').textContent,'رمز عبور root سرور');
     form.elements.namedItem('name').value='Iran 3';
     form.elements.namedItem('host').value='192.0.2.13';
     form.elements.namedItem('ssh_user').value='root';
