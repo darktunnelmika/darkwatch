@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070d14">
   <title>DARKWATCH — Fleet Monitor</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -42,7 +42,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="mini-stat"><span class="live-dot"></span> MONITORING ACTIVE</div>
-        <div class="side-version">DW / MONITOR v0.1.4</div>
+        <div class="side-version">DW / MONITOR v0.1.5</div>
         <button id="logout" class="logout-btn">↪ خروج از حساب</button>
       </div>
     </aside>
@@ -102,7 +102,7 @@
     </main>
   </div>
 
-  <dialog id="add-modal" class="modal"><form id="server-form" class="modal-content"><div class="modal-header"><div><div class="overline cyan">REGISTER A NODE</div><h2 id="server-modal-title">افزودن سرور جدید</h2></div><button type="button" class="close-btn modal-close" aria-label="بستن">×</button></div><div class="field-group"><label>نام سرور</label><input name="name" placeholder="مثلاً Iran · Tehran 01" maxlength="48" required></div><div class="field-group"><label>آدرس IP یا دامنه</label><input name="host" placeholder="192.0.2.10" dir="ltr" maxlength="253" required></div><div class="field-cols"><div class="field-group"><label>پورت SSH</label><input name="port" type="number" value="22" min="1" max="65535" dir="ltr" required></div><div class="field-group"><label>کاربر SSH</label><input name="ssh_user" value="root" dir="ltr" required></div></div><div class="field-group"><label id="ssh-password-label" for="ssh-server-password">رمز عبور root سرور</label><input id="ssh-server-password" name="ssh_password" type="password" dir="ltr" autocomplete="new-password" maxlength="1024" required placeholder="پسورد root سرور مقصد (نه رمز پنل)"></div><div class="field-group"><label>گروه / لوکیشن</label><input name="group_name" value="ایران" required></div><p class="modal-hint">رمز root همین سرور مقصد را وارد کن؛ با رمز ورود DARKWATCH فرق دارد. اتصال SSH قبل از ثبت تست می‌شود و رمز فقط به‌صورت رمزگذاری‌شده ذخیره می‌شود. اثرانگشت SSH را از کنسول دیتاسنتر تأیید کن.</p><div class="modal-actions"><button type="button" class="secondary-btn modal-close">انصراف</button><button type="submit" class="primary-btn">ثبت سرور</button></div><div id="form-error" class="error"></div></form></dialog>
+  <dialog id="add-modal" class="modal"><form id="server-form" class="modal-content"><div class="modal-header"><div><div class="overline cyan">REGISTER A NODE</div><h2 id="server-modal-title">افزودن سرور جدید</h2></div><button type="button" class="close-btn modal-close" aria-label="بستن">×</button></div><div class="field-group"><label>نام سرور</label><input name="name" placeholder="مثلاً Iran · Tehran 01" maxlength="48" required></div><div class="field-group"><label>آدرس IP یا دامنه</label><input name="host" placeholder="192.0.2.10" dir="ltr" maxlength="253" required></div><div class="field-cols"><div class="field-group"><label>پورت SSH</label><input name="port" type="number" value="22" min="1" max="65535" dir="ltr" required></div><div class="field-group"><label>کاربر SSH</label><input name="ssh_user" value="root" dir="ltr" required></div></div><div class="field-group"><label id="ssh-password-label" for="ssh-server-password">رمز عبور root سرور</label><input id="ssh-server-password" name="ssh_password" type="password" dir="ltr" autocomplete="new-password" maxlength="1024" required placeholder="پسورد root سرور مقصد (نه رمز پنل)"></div><div class="field-group"><label>گروه / لوکیشن</label><input name="group_name" value="ایران" required></div><p class="modal-hint">رمز root همین سرور مقصد را وارد کن؛ با رمز ورود DARKWATCH فرق دارد. اتصال خودکار تست می‌شود؛ کلید اولین اتصال ذخیره و در دفعات بعد بررسی می‌شود. برای امنیت، اثرانگشت ثبت‌شده را بعداً با کنسول دیتاسنتر تطبیق بده.</p><div class="modal-actions"><button type="button" class="secondary-btn modal-close">انصراف</button><button type="submit" class="primary-btn">ثبت سرور</button></div><div id="form-error" class="error"></div></form></dialog>
 
   <dialog id="terminal-modal" class="terminal-modal"><div class="terminal-header"><div class="term-meta"><span class="term-dot red"></span><span class="term-dot yellow"></span><span class="term-dot green"></span><span id="terminal-title">SSH Terminal</span></div><button id="terminal-close" class="close-btn" aria-label="بستن ترمینال">×</button></div><div id="terminal-container"></div><div class="term-bottom"><span><span class="live-dot"></span> ENCRYPTED SSH SESSION</span><span>CTRL+C · CTRL+V (paste)</span></div></dialog>
 

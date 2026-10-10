@@ -107,29 +107,18 @@
     const method=editing?'PUT':'POST';
     const originalLabel=button.textContent;
     button.disabled=true;
-    button.textContent='در حال بررسی اتصال SSH...';
+    button.textContent='ثبت و بررسی اتصال SSH...';
     $text('#form-error','');
     try{
-      let result;
-      try{result=await api(target,{method,body:JSON.stringify(d),timeoutMs:45000})}
-      catch(err){
-        if(err.details?.type!=='host_key')throw err;
-        const fp=err.details.fingerprint;
-        const accepted=window.confirm(
-          `اثر انگشت کلید SSH سرور:\n\n${fp}\n\nلطفاً این مقدار را از کنسول دیتاسنتر بررسی کن.\nاگر دقیقاً مطابقت دارد OK را بزن؛ در غیر این صورت Cancel.`);
-        if(!accepted){
-          $text('#form-error','اتصال لغو شد؛ تا تأیید اثر انگشت، اطلاعاتی ذخیره نمی‌شود.');
-          return;
-        }
-        d.trust_fingerprint=fp;
-        result=await api(target,{method,body:JSON.stringify(d),timeoutMs:45000});
-      }
+      // One request: connect with the entered SSH password, then pin the
+      // server host key after successful authentication and metric sampling.
+      const result=await api(target,{method,body:JSON.stringify(d),timeoutMs:45000});
       form.querySelector('input[name="ssh_password"]').value='';
       $('#add-modal').close();
       popup(editing?'رمز SSH بررسی و به‌روزرسانی شد':result?.updated?'این سرور قبلاً وجود داشت؛ اطلاعات SSH آن به‌روزرسانی شد':'اتصال SSH تأیید شد؛ سرور اضافه شد');
       await poll({force:true});
     }catch(err){
-      $text('#form-error',err.message||'افزودن سرور ناموفق بود؛ اتصال و اطلاعات SSH را بررسی کن.');
+      $text('#form-error',err.details?.message||err.message||'اتصال SSH ناموفق بود؛ اطلاعات سرور را بررسی کن.');
     }finally{
       button.disabled=false;
       button.textContent=originalLabel;

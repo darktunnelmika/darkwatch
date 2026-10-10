@@ -11,3 +11,42 @@ body.display-mode .sidebar,body.display-mode .topbar,body.display-mode .headline
 @media(max-width:630px){.sidebar{width:53px}.brand-emblem{width:33px;height:33px;font-size:14px;letter-spacing:-2px}.topbar{height:64px;padding:0 12px}.topbar-sub,.clock,.avatar{display:none}.topbar-left{gap:6px}.breadcrumb{font-size:10px}.status-chip{font-size:9px}.page{padding:20px 12px}.headline-row{align-items:start;flex-wrap:wrap;margin-bottom:20px}.headline-actions{width:100%;justify-content:space-between}.headline-row h1{font-size:23px}.overline{font-size:8px}.metric-grid{gap:9px}.metric-card{padding:14px 12px}.metric-value{font-size:27px}.metric-label{font-size:10px}.tiny-muted{display:none}.server-grid,body.display-mode .server-grid{grid-template-columns:1fr}.section-bar{flex-wrap:wrap}.panel{padding:15px}.network-kpis{grid-template-columns:1fr;gap:8px}.network-kpis .panel{padding:14px}.net-kpi h2{margin:4px 0}.help-grid{grid-template-columns:1fr}.footer span:last-child{display:none}.traffic-row{grid-template-columns:1.2fr 1fr 1fr}.traffic-row span:last-child{display:none}}
 
 .iface-toolbar{display:flex;align-items:center;justify-content:space-between;gap:7px;color:#6d8d98;font:9px monospace;direction:ltr;min-height:22px}.iface-toolbar select{min-width:0;max-width:95px;color:#70e2d1;background:#0b242c;border:1px solid #29525c;border-radius:5px;font:10px monospace;padding:3px;cursor:pointer}.iface-toolbar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+/* Mobile stability: keep viewport and input sizes stable in iOS Safari.
+   Do not disable user pinch-zoom (accessibility). */
+html {-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:clip;}
+body {overflow-x:clip;min-width:0;}
+.app-shell,.content,.page,.headline-row,.server-card,.metric-grid,.panel,
+.server-grid,.network-panel,.login-screen {min-width:0;max-width:100%;}
+.login-glow {width:min(700px,100vw);height:min(700px,100vw);}
+@supports (min-height:100svh) {
+  .login-screen,.app-shell {min-height:100svh;}
+}
+@media(max-width:630px){
+  .sidebar {height:100vh;height:100svh;flex-shrink:0;}
+  .topbar {min-width:0;}
+  .status-chip {min-width:0;padding:8px;}
+  .metric-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .metric-card {min-width:0;overflow:hidden;}
+  .metric-value {font-size:clamp(19px,6.5vw,27px);letter-spacing:-.5px;}
+  .value-unit {font-size:10px;margin-left:3px;}
+  .headline-actions .primary-btn,.headline-actions .secondary-btn {padding:10px;font-size:11px;}
+  .login-card {width:min(94vw,440px);padding:28px 22px;}
+  .modal {width:min(96vw,490px);max-width:96vw;
+          max-height:calc(100vh - 24px);max-height:calc(100svh - 24px);
+          overflow-y:auto;overscroll-behavior:contain;}
+  .modal-content {padding:18px;}
+  .field-cols {grid-template-columns:1fr;gap:0;}
+  .field-group input, .search-box, .login-card input, .iface-toolbar select,
+  .modal input, .modal select, .modal textarea {font-size:16px!important;line-height:1.35;}
+  .field-group input,.search-box,.login-card input {min-height:44px;}
+  .traffic-row {min-width:0;}
+  .toast {left:12px;right:12px;bottom:12px;max-width:calc(100vw - 24px);}
+  .terminal-modal {width:96vw;max-width:96vw;height:76vh;height:76svh;}
+  #terminal-container {min-width:0;}
+}
+@media (hover:none) and (pointer:coarse) {
+  /* Safari zooms text inputs below 16px when focused. */
+  input,select,textarea {font-size:16px!important;}
+}

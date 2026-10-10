@@ -188,3 +188,30 @@ on the **target VPS**, NOT the DARKWATCH admin PIN/password. The field is requir
 in the web form, and the SSH connection is verified before saving the server.
 For another SSH username, the label changes automatically. Previously configured
 key-only servers are not modified.
+
+
+## Mobile viewport and one-step SSH onboarding (v0.1.5)
+
+The panel keeps a stable small viewport on mobile browsers, ensures form inputs
+are at least 16px to prevent iPhone Safari's automatic focus zoom, and keeps
+card widths and modals within the mobile screen without disabling pinch zoom.
+
+After entering the SSH user/password, the panel tests authentication and reads
+real CPU/RAM/network metrics in **one step**. On the first successful SSH
+connection it automatically pins the server's SSH host key (trust on first use,
+TOFU); future host key changes are **rejected**. This avoids repeated prompts,
+but TOFU cannot protect a first connection from a man-in-the-middle attack.
+Verify the pinned SSH fingerprint later using your hosting provider's console.
+For strict pre-verification, operators can set `DW_SSH_REQUIRE_VERIFIED_HOSTS=1`
+in `/etc/darkwatch/env` and manage known_hosts themselves.
+
+Password-enrolled servers continue using their encrypted password on every
+monitoring refresh, rather than falling back to SSH-key-only monitoring.
+Root password authentication must be enabled on the target VPS: the monitor does
+not change SSHD configuration or security settings on any monitored server.
+
+After successful SSH registration, DARKWATCH immediately marks the new server
+online using its first verified CPU/RAM/network sample. Live CPU and bitrate
+values become available after the next sampling interval. Connection failures
+show specific SSH/authentication/port/timeout errors instead of silently
+creating offline records.
