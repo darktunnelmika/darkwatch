@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cfg=/etc/darkwatch/env
+# Service user requires directory traversal to read the HTTPS key/certificate.
+# The env file remains mode 0600 and root-only.
+install -d -m 0750 -o root -g darkwatch /etc/darkwatch
 getcfg() { sed -n "s/^$1=//p" "$cfg" | tail -n 1; }
 setcfg() {
   if grep -q "^$1=" "$cfg"; then
@@ -33,7 +36,7 @@ while true; do
   if [[ "$port" =~ ^[0-9]{4,5}$ ]] && ((10#$port >= 1024 && 10#$port <= 65535)); then port="$((10#$port))"; break; fi
   echo "Use a port from 1024 through 65535."
 done
-echo "1) Direct HTTPS panel: https://SERVER-IP:PORT (PIN optional after security warning)"
+echo "1) Direct HTTPS panel: https://SERVER-IP:PORT"
 echo "2) Private SSH tunnel panel (4-digit PIN allowed)"
 while true; do
   read -rp "Access mode [1]: " mode
@@ -70,6 +73,10 @@ PYIP
   fi
   chown root:darkwatch "$key" "$crt"
   chmod 0640 "$key" "$crt"
+  if ! runuser -u darkwatch -- test -r "$key" || ! runuser -u darkwatch -- test -r "$crt"; then
+    echo "DARKWATCH TLS files are not readable by the service user. Verify /etc/darkwatch permissions." >&2
+    exit 1
+  fi
   setcfg DW_SESSION_SECURE 1
 else
   ip=127.0.0.1

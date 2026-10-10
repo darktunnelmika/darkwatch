@@ -17,7 +17,7 @@ if [[ "$SRC" != '/opt/darkwatch' ]]; then
 fi
 id -u darkwatch >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/darkwatch --shell /usr/sbin/nologin darkwatch
 install -d -m 0700 -o darkwatch -g darkwatch /var/lib/darkwatch /var/lib/darkwatch/.ssh
-install -d -m 0750 /etc/darkwatch
+install -d -m 0750 -o root -g darkwatch /etc/darkwatch
 python3 -m venv /opt/darkwatch/.venv
 /opt/darkwatch/.venv/bin/python -m pip install --disable-pip-version-check -r /opt/darkwatch/requirements.txt
 if [[ ! -f /var/lib/darkwatch/.ssh/id_ed25519 ]]; then

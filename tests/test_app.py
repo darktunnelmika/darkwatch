@@ -139,3 +139,16 @@ def test_public_pin_wizard_and_password_reset():
     assert 'Change existing PIN/password?' in access
     assert 'DW_ALLOW_SHORT_PIN_PUBLIC' in access
     assert 'DW_FIRST_INSTALL' in installer
+
+
+def test_tls_directory_permissions_regression():
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[1]
+    installer = (base / 'install.sh').read_text()
+    access = (base / 'configure-access.sh').read_text()
+    required = 'install -d -m 0750 -o root -g darkwatch /etc/darkwatch'
+    assert required in installer
+    assert required in access
+    assert 'runuser -u darkwatch -- test -r "$key"' in access
+    assert 'runuser -u darkwatch -- test -r "$crt"' in access
+    assert 'Type YES to enable direct HTTPS' not in access
