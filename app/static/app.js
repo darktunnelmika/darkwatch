@@ -17,35 +17,54 @@
   function showLogin(){ $('#login').classList.remove('hidden');$('#application').classList.add('hidden'); }
   function showApp(){ $('#login').classList.add('hidden');$('#application').classList.remove('hidden'); }
   async function api(url, options={}){
-    const headers = {...options.headers};
-    if(options.body){headers['Content-Type']='application/json'; headers['X-CSRF-Token']=csrf;}
-    if(options.method==='DELETE') headers['X-CSRF-Token']=csrf;
-    const response=await fetch(url,{credentials:'same-origin',...options,headers});
-    let data=null;try{data=await response.json()}catch(e){}
-    if(response.status===401){showLogin();throw new Error(data?.detail||'نیاز به ورود مجدد')}
-    if(!response.ok){
-      let detail=data?.detail;
-      if(detail && typeof detail==='object' && !Array.isArray(detail)){
-        const err=new Error(detail.message||`HTTP ${response.status}`);
-        err.details=detail;throw err;
+    const {timeoutMs=12000,...requestOptions}=options;
+    const headers = {...requestOptions.headers};
+    if(requestOptions.body){headers['Content-Type']='application/json'; headers['X-CSRF-Token']=csrf;}
+    if(requestOptions.method==='DELETE') headers['X-CSRF-Token']=csrf;
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+    try{
+      const response=await fetch(url,{credentials:'same-origin',...requestOptions,headers,signal:controller.signal});
+      let data=null;try{data=await response.json()}catch(e){}
+      if(response.status===401){showLogin();throw new Error(data?.detail||'نیاز به ورود مجدد')}
+      if(!response.ok){
+        let detail=data?.detail;
+        if(detail && typeof detail==='object' && !Array.isArray(detail)){
+          const err=new Error(detail.message||`HTTP ${response.status}`);
+          err.details=detail;throw err;
+        }
+        if(Array.isArray(detail)) detail='اطلاعات ورودی نامعتبر است';
+        throw new Error(detail||`HTTP ${response.status}`);
       }
-      if(Array.isArray(detail)) detail='اطلاعات ورودی نامعتبر است';
-      throw new Error(detail||`HTTP ${response.status}`);
-    }
-    return data;
+      return data;
+    }catch(error){
+      if(error.name==='AbortError')throw new Error('پاسخ سرور طول کشید. سرویس DARKWATCH یا ارتباط شبکه را بررسی کن.');
+      throw error;
+    }finally{clearTimeout(timeout);}
   }
   async function bootstrap(){
-    try{const data=await api('/api/me');csrf=data.csrf;showApp();await poll();}
-    catch(e){showLogin()}
+    // Login must be visible even if the API or JavaScript fails to initialize.
+    showLogin();
+    try{
+      const data=await api('/api/me',{timeoutMs:8000});
+      csrf=data.csrf;showApp();await poll();
+    }catch(error){
+      showLogin();
+      if(!String(error.message).includes('نیاز به ورود'))
+        $text('#login-error',error.message||'ارتباط با سرور برقرار نشد');
+    }
   }
   $('#login-form').addEventListener('submit',async e=>{
     e.preventDefault();$text('#login-error','');
     const button=e.target.querySelector('button');button.disabled=true;
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),12000);
     try{
-      const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:$('#login-user').value,password:$('#login-pass').value})});
+      const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:controller.signal,body:JSON.stringify({username:$('#login-user').value,password:$('#login-pass').value})});
       const d=await response.json();if(!response.ok)throw new Error(d.detail||'ورود ناموفق');
       csrf=d.csrf;$('#login-pass').value='';showApp();await poll();
-    }catch(err){$text('#login-error',err.message)}finally{button.disabled=false}
+    }catch(err){$text('#login-error',err.name==='AbortError'?'پنل پاسخ نمی‌دهد؛ وضعیت سرویس و پورت را بررسی کن.':err.message)}
+    finally{clearTimeout(timeout);button.disabled=false}
   });
   $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'})}catch(e){}csrf='';showLogin()});
   function goto(next){page=next;$$('.page').forEach(e=>e.classList.toggle('active',e.id===`page-${next}`));$$('.nav-item').forEach(e=>e.classList.toggle('active',e.dataset.page===next));$text('#breadcrumb',names[next]);if(state)render(state);requestAnimationFrame(drawCharts)}

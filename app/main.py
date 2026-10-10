@@ -58,7 +58,7 @@ async def security_headers(request, call_next):
     return response
 
 @app.get('/')
-def index():
+async def index():
     return FileResponse(static_dir / 'index.html')
 
 class LoginRequest(BaseModel):

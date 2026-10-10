@@ -264,3 +264,16 @@ def test_ui_password_field_and_upgrade_script_safety():
     assert 'bash "$source_repo/install.sh"' not in upgrader
     assert 'configure-access.sh' not in upgrader.replace(
         '# DARKWATCH in-place update. Never run install.sh or configure-access.sh.','')
+
+
+def test_bootstrap_never_starts_with_black_blank_screen(client):
+    from pathlib import Path
+    base=Path(__file__).resolve().parents[1]
+    page=(base/'app/static/index.html').read_text()
+    script=(base/'app/static/app.js').read_text()
+    assert '<div id="login" class="login-screen">' in page
+    assert '<div id="application" class="app-shell hidden">' in page
+    assert 'const timeout=setTimeout(()=>controller.abort()' in script
+    assert "showLogin();" in script
+    assert client.get('/').status_code == 200
+

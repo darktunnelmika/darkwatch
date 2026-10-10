@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/vendor/xterm.css">
 </head>
 <body>
-  <div id="login" class="login-screen hidden">
+  <div id="login" class="login-screen">
     <div class="login-glow"></div>
     <form id="login-form" class="login-card">
       <div class="brand-emblem large">D<span>W</span></div>
@@ -22,6 +22,7 @@
       <input id="login-pass" type="password" autocomplete="current-password" required>
       <button class="primary-btn wide" type="submit">ورود به داشبورد <span>↗</span></button>
       <div class="error" id="login-error" aria-live="polite"></div>
+      <noscript><p class="error">برای نمایش پنل باید JavaScript مرورگر فعال باشد.</p></noscript>
       <div class="secure-caption">● PRIVATE ACCESS / ENCRYPTED SESSION</div>
     </form>
   </div>
