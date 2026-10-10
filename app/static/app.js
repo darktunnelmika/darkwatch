@@ -82,7 +82,7 @@
   }
   $('#server-form [name="ssh_user"]').addEventListener('input',updateSshPasswordLabel);
   updateSshPasswordLabel();
-  $('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
+  $$('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
     const form=$('#server-form');form.querySelectorAll('input').forEach(e=>e.disabled=false);
     form.reset();delete form.dataset.passwordServer;
     updateSshPasswordLabel();

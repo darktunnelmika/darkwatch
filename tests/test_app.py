@@ -327,3 +327,9 @@ def test_root_password_is_explicit_in_add_server_form(client):
     js=client.get('/static/app.js').text
     assert 'updateSshPasswordLabel' in js
     assert 'if(!d.ssh_password)' in js
+
+
+def test_add_server_buttons_use_multi_selector(client):
+    js=client.get('/static/app.js').text
+    assert "$$('.add-server-btn').forEach(" in js
+    assert "$('.add-server-btn').forEach(" not in js.replace("$$('.add-server-btn').forEach(", "")
