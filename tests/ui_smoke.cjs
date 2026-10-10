@@ -52,7 +52,7 @@ w.fetch=async(url,opt={})=>{
   }
   if(method==='POST'&&name==='/api/servers'){
     registrations++;
-    if(!payload.trust_fingerprint)return response(428,{detail:{type:'host_key',fingerprint:'SHA256:sample'}});
+    assert(!payload.trust_fingerprint, 'One-step onboarding must not ask for a fingerprint');
     const next=Math.max(...servers.map(s=>s.id))+1;
     servers.push({id:next,name:payload.name,host:payload.host,port:payload.port,ssh_user:payload.ssh_user,
       group:payload.group_name,online:true,cpu:0,memory_percent:0,disk_percent:0,rx_bps:0,tx_bps:0,history:[]});
@@ -104,8 +104,8 @@ async function run(){
     form.elements.namedItem('ssh_user').value='root';
     form.elements.namedItem('ssh_password').value='testing-password';
     form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
-    await wait(()=>registrations===2&&!doc.querySelector('#add-modal').hasAttribute('open'),'add server via password');
-    assert.equal(confirmations,1,'Exactly one host fingerprint approval');
+    await wait(()=>registrations===1&&!doc.querySelector('#add-modal').hasAttribute('open'),'add server via password');
+    assert.equal(confirmations,0,'No fingerprint confirmation in one-step onboarding');
     await wait(()=>doc.querySelectorAll('#server-cards .server-card').length===4,'New server rendered');
     assert.equal(form.elements.namedItem('ssh_password').value,'','Password cleared after save');
 
@@ -126,7 +126,7 @@ async function run(){
     await wait(()=>deletes===2,'delete via table');
     await wait(()=>doc.querySelector('#server-table [data-delete="2"]')===null,'Table row removed');
     assert(!errors.length,'Browser runtime errors: '+errors);
-    console.log('PASS: login, render, add server with SSH password + fingerprint, update SSH password, delete from card/table once, refresh');
+    console.log('PASS: login, render, add server with SSH password without extra prompts, update SSH password, delete from card/table once, refresh');
   }finally{
     dom.window.close();
   }

@@ -198,14 +198,12 @@ def test_dashboard_uses_server_total_not_selected_virtual_interface():
 
 
 def test_password_ssh_register_verify_and_update_existing_server(client, monkeypatch, tmp_path):
-    """First registration requests fingerprint confirmation, then saves encrypted secret."""
+    """One add request authenticates SSH and saves encrypted credentials."""
     from app import ssh_credentials
     monkeypatch.setattr(settings, 'DATA_DIR', tmp_path / 'credentials-data')
     attempts = []
     def fake_collect(server, password, script, confirmed=None):
         attempts.append((password, confirmed, server['host']))
-        if confirmed != 'SHA256:verified-host':
-            raise ssh_credentials.UntrustedHostKey('SHA256:verified-host')
         raw = subprocess.run(['sh', '-s'], input=SCRIPT, capture_output=True,
                              check=True, text=True).stdout
         return raw.encode()
@@ -214,14 +212,10 @@ def test_password_ssh_register_verify_and_update_existing_server(client, monkeyp
     payload = {'name':'Iran server','host':'192.0.2.99','port':2022,'ssh_user':'root',
                'group_name':'ایران','ssh_password':'RemotePassword_123!'}
     headers = {'X-CSRF-Token':csrf}
-    first = client.post('/api/servers', json=payload, headers=headers)
-    assert first.status_code == 428
-    assert first.json()['detail']['fingerprint'] == 'SHA256:verified-host'
-    assert client.get('/api/servers').json() == []
-    payload['trust_fingerprint'] = 'SHA256:verified-host'
-    second = client.post('/api/servers', json=payload, headers=headers)
-    assert second.status_code == 201
-    sid = second.json()['id']
+    created = client.post('/api/servers', json=payload, headers=headers)
+    assert created.status_code == 201
+    assert len(attempts) == 1
+    sid = created.json()['id']
     registered = client.get('/api/servers').json()
     assert len(registered)==1
     assert 'ssh_password' not in registered[0]
@@ -230,8 +224,9 @@ def test_password_ssh_register_verify_and_update_existing_server(client, monkeyp
     assert enc and 'RemotePassword_123!' not in enc
     assert ssh_credentials.decrypt_password(enc) == 'RemotePassword_123!'
     change = client.put(f'/api/servers/{sid}/ssh-password', headers=headers,
-        json={'ssh_password':'AnotherPassword_456!', 'trust_fingerprint':'SHA256:verified-host'})
+        json={'ssh_password':'AnotherPassword_456!'})
     assert change.status_code == 200
+    assert len(attempts) == 2
     assert ssh_credentials.decrypt_password(db.get_encrypted_password(sid)) == 'AnotherPassword_456!'
     assert client.delete(f'/api/servers/{sid}', headers=headers).status_code == 200
     assert db.get_encrypted_password(sid) is None
@@ -259,7 +254,8 @@ def test_ui_password_field_and_upgrade_script_safety():
     assert 'name="ssh_password"' in page
     assert 'type="password"' in page
     assert 'data-password' in ui
-    assert 'host_key' in ui
+    assert 'host_key' not in ui
+    assert 'await api(target,{method,body:JSON.stringify(d),timeoutMs:45000})' in ui
     assert '/etc/darkwatch/env' in upgrader
     assert 'bash "$source_repo/install.sh"' not in upgrader
     assert 'configure-access.sh' not in upgrader.replace(
@@ -333,3 +329,64 @@ def test_add_server_buttons_use_multi_selector(client):
     js=client.get('/static/app.js').text
     assert "$$('.add-server-btn').forEach(" in js
     assert "$('.add-server-btn').forEach(" not in js.replace("$$('.add-server-btn').forEach(", "")
+
+
+def test_first_connection_pins_new_key_without_prompt(monkeypatch, tmp_path):
+    import os
+    import paramiko
+    from app import ssh_credentials as ssh
+    monkeypatch.setenv('DW_SSH_REQUIRE_VERIFIED_HOSTS','0')
+    monkeypatch.setattr(settings, 'KNOWN_HOSTS', tmp_path/'known_hosts')
+    key=paramiko.RSAKey.generate(1024)
+    policy=ssh.ConfirmHostPolicy()
+    policy.missing_host_key(None, 'host.example', key)
+    assert policy.pending == ('host.example',key)
+    assert not settings.KNOWN_HOSTS.exists()
+    ssh.save_verified_host_key(policy)
+    assert settings.KNOWN_HOSTS.is_file()
+    hosts=paramiko.HostKeys(str(settings.KNOWN_HOSTS))
+    assert hosts.lookup('host.example')[key.get_name()] == key
+    # Security: strict opt-in still requires verified fingerprints.
+    monkeypatch.setenv('DW_SSH_REQUIRE_VERIFIED_HOSTS','1')
+    with pytest.raises(ssh.UntrustedHostKey):
+        ssh.ConfirmHostPolicy().missing_host_key(None,'untrusted.example',key)
+
+
+def test_monitor_uses_encrypted_ssh_password_after_register(monkeypatch,tmp_path):
+    import asyncio
+    from app import ssh_credentials
+    from app.collector import Monitor
+    monkeypatch.setattr(db, 'DB_PATH', tmp_path/'monitor.db')
+    monkeypatch.setattr(settings, 'DATA_DIR', tmp_path/'monitor')
+    db.init_db()
+    server={'name':'Iran VPS','host':'192.0.2.50','port':2222,
+            'ssh_user':'root','group_name':'ایران'}
+    encrypted=ssh_credentials.encrypt_password('secret-root-pass')
+    sid=db.add_password_server(server,encrypted)
+    record=db.get_server(sid)
+    received=[]
+    def fake_read(entry,passphrase,script,confirmed=None):
+        received.append((entry['host'],passphrase))
+        return subprocess.run(['sh','-s'],input=script,
+                              check=True,capture_output=True,text=True).stdout.encode()
+    monkeypatch.setattr(ssh_credentials,'collect_password_metrics',fake_read)
+    monitor=Monitor()
+    asyncio.run(monitor.poll(record))
+    assert received == [('192.0.2.50','secret-root-pass')]
+    assert monitor.snapshots[sid]['online'] is True
+    assert monitor.snapshots[sid]['memory_total'] > 0
+    assert monitor.snapshots[sid]['interfaces']
+    assert 'ssh_password' not in monitor.state()['servers'][1]
+
+
+def test_mobile_stability_css_and_no_host_confirmation():
+    from pathlib import Path
+    base=Path(__file__).resolve().parents[1]
+    css=(base/'app/static/style.css').read_text()
+    html=(base/'app/static/index.html').read_text()
+    js=(base/'app/static/app.js').read_text()
+    assert '100svh' in css
+    assert 'font-size:16px!important' in css
+    assert 'viewport-fit=cover' in html
+    assert 'window.confirm(' not in js.split("  $('#server-form').addEventListener('submit',async e=>{",1)[1].split("  $('#search-server')",1)[0]
+    assert 'const result=await api(target,' in js

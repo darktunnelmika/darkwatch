@@ -65,28 +65,38 @@ class Monitor:
             sid = server['id']
             now = time.monotonic()
             try:
-                if sid == 0:
-                    proc = await asyncio.create_subprocess_exec('sh', '-s', stdin=asyncio.subprocess.PIPE,
-                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                # Password-registered servers must use their saved encrypted
+                # SSH credentials on EVERY refresh, not fall back to the hub key.
+                stored = db.get_encrypted_password(sid) if sid != 0 else None
+                if stored is not None:
+                    from .ssh_credentials import collect_password_metrics, decrypt_password
+                    password = decrypt_password(stored)
+                    out = await asyncio.wait_for(
+                        asyncio.to_thread(collect_password_metrics, server, password, SCRIPT),
+                        timeout=24)
                 else:
-                    if not shutil.which('ssh'):
-                        raise OSError('OpenSSH client not installed on hub')
-                    proc = await asyncio.create_subprocess_exec(
-                        'ssh', '-T', '-i', str(settings.SSH_KEY), '-o', 'BatchMode=yes',
-                        '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
-                        '-o', f'UserKnownHostsFile={settings.KNOWN_HOSTS}',
-                        '-o', 'ConnectTimeout=4', '-o', 'ConnectionAttempts=1',
-                        '-p', str(server['port']), '-l', server['ssh_user'], '--', server['host'], 'sh', '-s',
-                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE)
-                try:
-                    out, err = await asyncio.wait_for(proc.communicate(SCRIPT.encode()), timeout=7)
-                except asyncio.TimeoutError:
-                    proc.kill(); await proc.communicate()
-                    raise TimeoutError('Connection timed out')
-                if proc.returncode != 0:
-                    txt = err.decode(errors='replace').strip()
-                    raise ValueError('SSH failed: ' + txt[:220])
+                    if sid == 0:
+                        proc = await asyncio.create_subprocess_exec('sh', '-s', stdin=asyncio.subprocess.PIPE,
+                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                    else:
+                        if not shutil.which('ssh'):
+                            raise OSError('OpenSSH client not installed on hub')
+                        proc = await asyncio.create_subprocess_exec(
+                            'ssh', '-T', '-i', str(settings.SSH_KEY), '-o', 'BatchMode=yes',
+                            '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+                            '-o', f'UserKnownHostsFile={settings.KNOWN_HOSTS}',
+                            '-o', 'ConnectTimeout=4', '-o', 'ConnectionAttempts=1',
+                            '-p', str(server['port']), '-l', server['ssh_user'], '--', server['host'], 'sh', '-s',
+                            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE)
+                    try:
+                        out, err = await asyncio.wait_for(proc.communicate(SCRIPT.encode()), timeout=7)
+                    except asyncio.TimeoutError:
+                        proc.kill(); await proc.communicate()
+                        raise TimeoutError('Connection timed out')
+                    if proc.returncode != 0:
+                        txt = err.decode(errors='replace').strip()
+                        raise ValueError('SSH failed: ' + txt[:220])
                 parsed = parse_output(out.decode(errors='replace'))
                 previous = self.previous.get(sid)
                 usage = rate_metrics(parsed, previous, now)
@@ -103,11 +113,20 @@ class Monitor:
             except Exception as exc:
                 error = str(exc)
                 # Never expose key paths or other internal exceptions to web clients.
-                if 'Host key verification failed' in error: error = 'کلید میزبان SSH تأیید نشده (known_hosts)'
-                elif 'Permission denied' in error: error = 'دسترسی SSH رد شد؛ کلید را بررسی کن'
-                elif 'timed out' in error.lower(): error = 'مهلت اتصال تمام شد'
-                elif 'Connection refused' in error: error = 'پورت SSH اتصال را رد کرد'
-                else: error = 'ارتباط یا دریافت اطلاعات ناموفق بود'
+                if ('Host key verification failed' in error or
+                    type(exc).__name__ in ('BadHostKeyException', 'UntrustedHostKey')):
+                    error = 'کلید SSH سرور تغییر کرده؛ برای امنیت اتصال متوقف شد'
+                elif ('Permission denied' in error or
+                      type(exc).__name__ in ('AuthenticationException', 'BadAuthenticationType')):
+                    error = 'نام کاربری/پسورد SSH اشتباه است یا ورود رمزدار در سرور غیرفعال است'
+                elif 'timed out' in error.lower() or 'Timeout' in type(exc).__name__:
+                    error = 'مهلت اتصال SSH تمام شد؛ IP و پورت را بررسی کن'
+                elif 'Connection refused' in error:
+                    error = 'پورت SSH اتصال را رد کرد'
+                elif 'Incomplete' in error or 'Remote metrics' in error:
+                    error = 'اتصال برقرار شد ولی دریافت آمار سرور ناموفق بود'
+                else:
+                    error = 'ارتباط یا دریافت اطلاعات ناموفق بود'
                 self.snapshots[sid] = {'id': sid, 'name': server['name'], 'host': server['host'],
                     'group': server['group_name'], 'online': False, 'error': error, 'at': int(time.time())}
                 self.previous.pop(sid, None)

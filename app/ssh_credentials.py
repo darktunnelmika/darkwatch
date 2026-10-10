@@ -26,7 +26,14 @@ class ConfirmHostPolicy(paramiko.MissingHostKeyPolicy):
 
     def missing_host_key(self, client, hostname, key):
         fingerprint = fingerprint_of(key)
-        if not self.confirmed or self.confirmed != fingerprint:
+        # First use: remember the presented key in memory, authenticate and
+        # successfully read metrics, THEN pin it in known_hosts. Subsequent
+        # connections reject a changed key via Paramiko's host-key check.
+        # No extra popup/second submission for the user's own servers.
+        strict = os.environ.get('DW_SSH_REQUIRE_VERIFIED_HOSTS') == '1'
+        if strict and self.confirmed != fingerprint:
+            raise UntrustedHostKey(fingerprint)
+        if self.confirmed and self.confirmed != fingerprint:
             raise UntrustedHostKey(fingerprint)
         self.pending = (hostname, key)
 
@@ -62,8 +69,8 @@ def connect_password(server, password, confirmed=None):
     try:
         client.connect(
             hostname=server['host'], port=server['port'], username=server['ssh_user'],
-            password=password, look_for_keys=False, allow_agent=False, timeout=5,
-            auth_timeout=5, banner_timeout=5)
+            password=password, look_for_keys=False, allow_agent=False, timeout=7,
+            auth_timeout=7, banner_timeout=7)
     except Exception:
         client.close()
         raise
@@ -101,7 +108,7 @@ def collect_password_metrics(server, password, script, confirmed=None):
             raise ValueError('Remote metrics command failed')
         if b'__END__' not in output:
             raise ValueError('Incomplete metrics response')
-        save_verified_host_key(policy)
+        # Only pin an unknown key after successful login AND valid command output.\n        save_verified_host_key(policy)
         return output
     finally:
         client.close()
