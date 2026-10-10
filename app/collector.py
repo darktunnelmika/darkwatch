@@ -44,6 +44,19 @@ class Monitor:
         self.previous.pop(sid, None)
         self.history.pop(sid, None)
 
+    def prime(self, sid, server, parsed):
+        """Immediately expose successfully verified SSH data as online."""
+        now = time.monotonic()
+        usage = rate_metrics(parsed, None, now)
+        usage.update({'id': sid, 'name': server['name'], 'host': server['host'],
+                      'group': server['group_name'], 'online': True, 'error': None,
+                      'at': int(time.time())})
+        self.snapshots[sid] = usage
+        self.previous[sid] = (parsed, now)
+        self.history[sid].append({'at': usage['at'], 'cpu': usage['cpu'],
+                                  'mem': usage['memory_percent'],
+                                  'rx': usage['rx_bps'], 'tx': usage['tx_bps']})
+
     async def run(self):
         while True:
             started = time.monotonic()

@@ -176,7 +176,7 @@ def verify_password_connection(server, password, trust_fingerprint=None):
         # Test actual metrics collection before saving credentials.
         output = ssh_credentials.collect_password_metrics(
             server, password, SCRIPT, trust_fingerprint)
-        parse_output(output.decode('utf-8', 'replace'))
+        return parse_output(output.decode('utf-8', 'replace'))
     except ssh_credentials.UntrustedHostKey as exc:
         raise HTTPException(428, detail={
             'type': 'host_key', 'fingerprint': exc.fingerprint,
@@ -187,9 +187,17 @@ def verify_password_connection(server, password, trust_fingerprint=None):
         if isinstance(exc, paramiko.BadHostKeyException):
             raise HTTPException(409, 'کلید SSH این سرور با کلید قبلی متفاوت است؛ اتصال رد شد')
         if isinstance(exc, paramiko.AuthenticationException):
-            raise HTTPException(422, 'نام کاربری یا رمز SSH اشتباه است یا ورود با رمز غیرفعال است')
-        if isinstance(exc, (OSError, TimeoutError, socket.timeout, paramiko.SSHException, ValueError)):
-            raise HTTPException(422, 'اتصال SSH یا دریافت آمار سرور ناموفق بود؛ IP، پورت و فایروال را بررسی کن')
+            raise HTTPException(422, 'ورود SSH با این رمز رد شد؛ رمز root یا تنظیم PasswordAuthentication/PermitRootLogin مقصد را بررسی کن')
+        if isinstance(exc, socket.gaierror):
+            raise HTTPException(422, 'دامنه سرور پیدا نشد؛ DNS یا آدرس مقصد اشتباه است')
+        if isinstance(exc, ConnectionRefusedError):
+            raise HTTPException(422, 'سرور اتصال به پورت SSH را رد کرد؛ سرویس SSH یا پورت مقصد را بررسی کن')
+        if isinstance(exc, (TimeoutError, socket.timeout)):
+            raise HTTPException(504, 'اتصال SSH مهلت‌دار شد؛ شبکه، فایروال یا پورت مقصد پاسخ نمی‌دهد')
+        if isinstance(exc, ValueError):
+            raise HTTPException(422, 'اتصال SSH برقرار شد، ولی آمار CPU/RAM/Network دریافت نشد؛ مجوز اجرای sh و خواندن /proc را بررسی کن')
+        if isinstance(exc, (OSError, paramiko.SSHException)):
+            raise HTTPException(422, 'اتصال SSH برقرار نشد؛ آدرس، پورت، شبکه یا تنظیمات SSH مقصد را بررسی کن')
         raise HTTPException(422, 'اتصال SSH انجام نشد')
 
 
@@ -197,7 +205,7 @@ def verify_password_connection(server, password, trust_fingerprint=None):
 def create_server(data: ServerInput, _=Depends(verify_csrf)):
     values = data.model_dump(exclude={'ssh_password', 'trust_fingerprint'})
     if data.ssh_password:
-        verify_password_connection(values, data.ssh_password, data.trust_fingerprint)
+        sampled = verify_password_connection(values, data.ssh_password, data.trust_fingerprint)
         encrypted = ssh_credentials.encrypt_password(data.ssh_password)
         try:
             sid = db.add_password_server(values, encrypted)
@@ -209,9 +217,11 @@ def create_server(data: ServerInput, _=Depends(verify_csrf)):
                 if sid is None or not db.set_password(sid, encrypted):
                     raise HTTPException(409,'سرور قبلاً ثبت شده ولی به‌روزرسانی اطلاعات SSH ناموفق بود')
                 monitor.clear(sid)
+                monitor.prime(sid, db.get_server(sid), sampled)
                 return {'id':sid, 'ok':True, 'updated':True}
             raise
         monitor.clear(sid)
+        monitor.prime(sid, db.get_server(sid), sampled)
         return {'id':sid, 'ok':True, 'updated':False}
     # Existing SSH-key workflow remains backwards-compatible.
     try:
@@ -232,10 +242,11 @@ def change_ssh_password(server_id: int, data: PasswordInput, _=Depends(verify_cs
     server = db.get_server(server_id) if server_id > 0 else None
     if not server:
         raise HTTPException(404, 'سرور پیدا نشد')
-    verify_password_connection(server, data.ssh_password, data.trust_fingerprint)
+    sampled = verify_password_connection(server, data.ssh_password, data.trust_fingerprint)
     if not db.set_password(server_id, ssh_credentials.encrypt_password(data.ssh_password)):
         raise HTTPException(404, 'سرور پیدا نشد')
     monitor.clear(server_id)
+    monitor.prime(server_id, server, sampled)
     return {'ok': True}
 
 @app.delete('/api/servers/{server_id}')

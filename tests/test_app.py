@@ -216,6 +216,10 @@ def test_password_ssh_register_verify_and_update_existing_server(client, monkeyp
     assert created.status_code == 201
     assert len(attempts) == 1
     sid = created.json()['id']
+    state = client.get('/api/state').json()
+    entry = next(s for s in state['servers'] if s['id'] == sid)
+    assert entry['online'] is True
+    assert entry['memory_total'] > 0
     registered = client.get('/api/servers').json()
     assert len(registered)==1
     assert 'ssh_password' not in registered[0]
@@ -390,3 +394,16 @@ def test_mobile_stability_css_and_no_host_confirmation():
     assert 'viewport-fit=cover' in html
     assert 'window.confirm(' not in js.split("  $('#server-form').addEventListener('submit',async e=>{",1)[1].split("  $('#search-server')",1)[0]
     assert 'const result=await api(target,' in js
+
+
+def test_probe_errors_are_actionable_for_root_password(monkeypatch):
+    import paramiko
+    from app.main import verify_password_connection
+    from app import ssh_credentials
+    def reject(*args,**kwargs):
+        raise paramiko.AuthenticationException('Authentication failed')
+    monkeypatch.setattr(ssh_credentials,'collect_password_metrics',reject)
+    with pytest.raises(Exception) as error:
+        verify_password_connection({'name':'Test VPS','host':'192.0.2.10','port':22,'ssh_user':'root'},'badpwd')
+    assert getattr(error.value,'status_code',None)==422
+    assert 'root' in error.value.detail

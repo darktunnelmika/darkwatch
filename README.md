@@ -209,3 +209,9 @@ Password-enrolled servers continue using their encrypted password on every
 monitoring refresh, rather than falling back to SSH-key-only monitoring.
 Root password authentication must be enabled on the target VPS: the monitor does
 not change SSHD configuration or security settings on any monitored server.
+
+After successful SSH registration, DARKWATCH immediately marks the new server
+online using its first verified CPU/RAM/network sample. Live CPU and bitrate
+values become available after the next sampling interval. Connection failures
+show specific SSH/authentication/port/timeout errors instead of silently
+creating offline records.
