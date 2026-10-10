@@ -1,5 +1,5 @@
 [Unit]
-Description=DarkWatch private server overview
+Description=DarkWatch personal server monitor
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ User=darkwatch
 Group=darkwatch
 WorkingDirectory=/opt/darkwatch
 EnvironmentFile=/etc/darkwatch/env
-ExecStart=/opt/darkwatch/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log
+ExecStart=/opt/darkwatch/.venv/bin/python -m app.server
 Restart=on-failure
 RestartSec=4
 UMask=0077

@@ -6,7 +6,7 @@ if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
 fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates git python3 python3-venv openssh-client
+apt-get install -y ca-certificates git python3 python3-venv openssh-client openssl iproute2
 repo=https://github.com/darktunnelmika/darkwatch.git
 target=/root/darkwatch-source
 if [[ ! -e "$target" ]]; then

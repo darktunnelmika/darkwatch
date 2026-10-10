@@ -53,8 +53,9 @@ chmod 700 /var/lib/darkwatch/.ssh
 cp /opt/darkwatch/deploy/darkwatch.service /etc/systemd/system/darkwatch.service
 systemctl daemon-reload
 systemctl enable --now darkwatch
+bash "$SRC/configure-access.sh"
 printf '\nDarkWatch installed: systemctl status darkwatch\n'
-printf 'Dashboard listens ONLY on 127.0.0.1:8765 (not publicly accessible).\n'
+printf 'Dashboard configured with selected port and access mode.\n'
 printf 'SSH public key to allow on each monitored server:\n'
 cat /var/lib/darkwatch/.ssh/id_ed25519.pub
 printf '\nRead README.md for SSH host verification and HTTPS/Tunnel instructions.\n'

@@ -2,30 +2,26 @@ import argparse
 import getpass
 import re
 import sys
-
 from .auth import new_hash
 
-
-def valid_password(password):
-    """Allow a local-only four-digit PIN or a conventional longer password."""
+def valid_password(password, strong_only=False):
+    if strong_only:
+        return len(password) >= 12
     return bool(re.fullmatch(r"[0-9]{4}", password)) or len(password) >= 12
 
-
 def main():
-    parser = argparse.ArgumentParser(description='DarkWatch administrator tools')
+    parser=argparse.ArgumentParser(description="DarkWatch administrator tools")
     parser.add_argument('command', choices=['hash-password'])
-    args = parser.parse_args()
-    if args.command == 'hash-password':
-        pw = getpass.getpass('Admin password (4-digit PIN or 12+ characters): ')
-        confirm = getpass.getpass('Repeat: ')
-        if pw != confirm:
-            sys.exit('Passwords do not match. Run the installer again.')
-        if not valid_password(pw):
-            sys.exit('Use exactly 4 numeric digits OR a password of 12+ characters.')
-        if len(pw) == 4:
-            print('WARNING: Four-digit PIN is weak. Use ONLY with a private SSH tunnel, never on a public dashboard.', file=sys.stderr)
+    parser.add_argument('--strong-only', action='store_true')
+    args=parser.parse_args()
+    if args.command=='hash-password':
+        policy='12+ characters' if args.strong_only else '4-digit numeric PIN or 12+ characters'
+        pw=getpass.getpass('Admin password ('+policy+'): ')
+        repeat=getpass.getpass('Repeat: ')
+        if pw != repeat or not valid_password(pw, args.strong_only):
+            sys.exit('Password mismatch or invalid length ('+policy+').')
+        if len(pw)==4:
+            print('WARNING: A four-digit PIN is for private SSH tunnel access only.',file=sys.stderr)
         print(new_hash(pw))
-
-
-if __name__ == '__main__':
+if __name__=='__main__':
     main()

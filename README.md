@@ -123,3 +123,7 @@ DarkWatch application code: for personal use / adaptation. Bundled `xterm.js` an
 ### Local PIN support (v0.1.1)
 
 The installer accepts **exactly four ASCII digits** as a personal PIN (or a regular password of 12 or more characters). A four-digit PIN is weak: **do not expose this web application publicly** if using a PIN. Keep binding to `127.0.0.1` and access it only through your SSH tunnel. If setup was interrupted by a password rejection, re-run `bootstrap.sh` to resume installation.
+
+
+## v0.1.2 — configurable port / printed address
+Installation now asks for TCP port (1024-65535) and access mode, then prints the panel URL when the service is active. Direct HTTPS works at `https://SERVER-IP:PORT` with a self-signed TLS certificate and requires a password of at least 12 characters. Four-digit PIN is available only in private SSH tunnel mode. No firewall, SSH or tunnel configurations are modified automatically.

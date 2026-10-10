@@ -97,3 +97,30 @@ def test_four_digit_pin_login(client, monkeypatch):
     assert bad.status_code == 401
     good = client.post('/api/login', json={'username':'admin','password':'1234'})
     assert good.status_code == 200
+
+
+def test_exposed_mode_password_policy():
+    assert valid_password('1234')
+    assert not valid_password('1234', strong_only=True)
+    assert valid_password('MyStrongPassword-123', strong_only=True)
+
+def test_custom_port_and_https_gate(monkeypatch, tmp_path):
+    import app.server as server
+    called=[]
+    monkeypatch.setattr(server.uvicorn,'run',lambda *args,**kw: called.append(kw))
+    monkeypatch.setenv('DW_PORT','15432')
+    monkeypatch.setenv('DW_BIND','127.0.0.1')
+    server.main()
+    assert called[-1]['port']==15432
+    monkeypatch.setenv('DW_BIND','0.0.0.0')
+    monkeypatch.setenv('DW_SESSION_SECURE','1')
+    monkeypatch.setenv('DW_PASSWORD_TYPE','pin-or-strong')
+    with pytest.raises(SystemExit,match='strong password'):
+        server.main()
+    key=tmp_path/'key'; crt=tmp_path/'crt'
+    key.write_text('test'); crt.write_text('test')
+    monkeypatch.setenv('DW_PASSWORD_TYPE','strong')
+    monkeypatch.setenv('DW_TLS_KEY',str(key))
+    monkeypatch.setenv('DW_TLS_CERT',str(crt))
+    server.main()
+    assert called[-1]['ssl_keyfile']==str(key)
