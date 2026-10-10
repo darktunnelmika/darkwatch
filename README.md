@@ -4,7 +4,7 @@
 
 - Multiple Iran/VPS servers on one dashboard
 - CPU (including cores), RAM, disk, load and uptime, every 3 seconds
-- Live per-interface network traffic RX/TX in bits/s and cumulative bytes
+- Live total server NIC traffic RX/TX in bits/s and cumulative bytes (physical network adapters combined)
 - All-server bandwidth overview and short-term historical graphs
 - Secure, interactive in-browser OpenSSH terminal for remote nodes
 - Responsive, RTL, all assets served locally (no remote CDNs), monitor wallboard mode
@@ -101,7 +101,7 @@ Configuration: `/etc/darkwatch/env`. Database: `/var/lib/darkwatch/darkwatch.db`
 - Web SSH has shell-level capabilities. Limit panel access with SSH tunnel / VPN or HTTPS + firewall and a strong login password. Additional 2FA is recommended before exposing the panel publicly (not implemented in v0.1.0).
 - Known_hosts verification is strict. Adding an IP to the web UI cannot silently accept a new host key.
 - No Agent, sudo, privileged systemd service, blind firewall changes, or tunnel configuration changes are performed on remote targets.
-- Network rates are measured by the Linux kernel's NIC counters on the **default network interface** of each server. They include all traffic through that interface, not solely the tunnel or client traffic. Extra interfaces and cumulative byte counters are available in `/api/state`; each server card has an interface selector when the server has more than one interface.
+- Network rates are calculated from Linux NIC RX/TX byte counters across **all hardware-backed server adapters**. Loopback, virtual tunnels, bridges and containers are not added again (otherwise traffic could be counted twice). If hardware-backed interfaces are not identifiable, the default-route adapter is used as a fallback. This is overall network-interface traffic, not per-service/client usage. Cumulative NIC counters reset when the OS resets them. Detailed per-interface statistics remain available through `/api/state`.
 - The aggregate network number simply sums each server's default NIC rates. If traffic crosses several monitored servers, it will be counted multiple times. This figure is a fleet throughput view, not customer billable usage.
 
 ## Development (Linux/macOS with OpenSSH)

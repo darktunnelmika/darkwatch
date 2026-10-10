@@ -5,7 +5,6 @@
   const $$ = s => [...document.querySelectorAll(s)];
   let csrf = '', page = 'overview', filter = 'all', state = null, isPolling = false;
   let aggHistory = [], currentTerm = null, currentSocket = null, chartResizeScheduled = false;
-  let selectedIfaces={}; try{selectedIfaces=JSON.parse(localStorage.getItem('dw_ifaces')||'{}')}catch(e){}
   const names = {overview:'داشبورد', servers:'سرورها', network:'ترافیک زنده',settings:'راهنمای اتصال'};
   const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function $text(selector, value){ const e=$(selector); if(e) e.textContent=value; }
@@ -57,16 +56,15 @@
   $$('[data-copy]').forEach(e=>e.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(e.dataset.copy);popup('دستور کپی شد')}catch(err){popup('مرورگر اجازه کپی ندارد')}}));
   function detailsButtons(s, local=false){return `<div class="card-buttons">${local?'':`<button class="sm-btn ssh-button" data-ssh="${s.id}">⌘ SSH</button><button class="sm-btn remove" data-delete="${s.id}" title="حذف از فهرست (بدون تغییر در سرور)">✕</button>`}</div>`}
   function statBar(label,value,color){const v=Math.min(100,Math.max(0,value||0));return `<div><div class="stat-label">${label}</div><div class="stat-value">${pct(value)}</div><div class="stat-track"><div class="${color}" style="width:${v}%"></div></div></div>`}
-  function chosenIface(s){return s.interfaces?.[selectedIfaces[s.id]] ? selectedIfaces[s.id] : s.primary_interface}
-  function effectiveNet(s){return s.interfaces?.[chosenIface(s)] || {rx_bps:s.rx_bps||0,tx_bps:s.tx_bps||0,rx_bytes:s.rx_total||0,tx_bytes:s.tx_total||0}}
+  function hostNetwork(s){return {rx_bps:s.rx_bps||0,tx_bps:s.tx_bps||0,rx_bytes:s.rx_total||0,tx_bytes:s.tx_total||0}}
   function card(s){
-    const online=!!s.online, net=effectiveNet(s), iface=chosenIface(s);
-    const ifaceSelect=Object.keys(s.interfaces||{}).length>1?`<select aria-label="انتخاب کارت شبکه" class="iface-select" data-iface="${s.id}">${Object.keys(s.interfaces).map(name=>`<option value="${esc(name)}" ${name===iface?'selected':''}>${esc(name)}</option>`).join('')}</select>`:`<span>${esc(iface||'—')}</span>`;
+    const online=!!s.online, net=hostNetwork(s);
+    const scope=s.network_scope==='default-interface'?'شبکه اصلی سرور':'مجموع ترافیک سرور';
     return `<article class="server-card ${online?'':'offline'}">
       <div class="server-top"><div class="server-identity"><div class="server-avatar">▣</div><div style="min-width:0"><div class="server-title" title="${esc(s.name)}">${esc(s.name)}</div><div class="server-ip">${esc(s.host)}</div></div></div><span class="online-chip ${online?'':'down'}">● ${online?'ONLINE':'OFFLINE'}</span></div>
       ${online?`<div class="server-divider"></div><div class="server-stats">${statBar('CPU',s.cpu,'')}${statBar('RAM',s.memory_percent,'purple')}${statBar('DISK',s.disk_percent,'green')}</div>
       <div class="network-values"><div class="network-val"><small>↓ RX / DOWNLOAD</small><strong class="cyan">${bitFmt(net.rx_bps)}</strong></div><div class="network-val"><small>↑ TX / UPLOAD</small><strong class="violet">${bitFmt(net.tx_bps)}</strong></div></div>
-      <div class="iface-toolbar">INTERFACE ${ifaceSelect}<span>RX ${byteFmt(net.rx_bytes)} · TX ${byteFmt(net.tx_bytes)}</span></div>
+      <div class="iface-toolbar"><span>${scope}</span><span>RX ${byteFmt(net.rx_bytes)} · TX ${byteFmt(net.tx_bytes)}</span></div>
       <canvas class="server-spark" data-spark="${s.id}"></canvas>`:`<div class="server-error"><span>⌁</span>${esc(s.error||'در حال اتصال به سرور...')}</div>`}
       <div class="card-footer"><span class="uptime">${online?uptime(s.uptime):esc(s.group||'DISCONNECTED')}</span>${detailsButtons(s,s.id===0)}</div></article>`;
   }
@@ -76,9 +74,8 @@
     attachCardActions();
     for(const s of items){let el=$(`[data-spark="${s.id}"]`); if(el) drawMini(el,sparkFor(s))}
   }
-  function sparkFor(s){const iface=chosenIface(s);return (s.history||[]).map(p=>p.ifaces?.[iface]?.rx??p.rx??0)}
+  function sparkFor(s){return (s.history||[]).map(p=>p.rx??0)}
   function attachCardActions(){
-    $$('.iface-select').forEach(e=>e.addEventListener('change',()=>{selectedIfaces[e.dataset.iface]=e.value;localStorage.setItem('dw_ifaces',JSON.stringify(selectedIfaces));if(state)render(state)}));
     $$('.ssh-button').forEach(b=>b.addEventListener('click',()=>openTerminal(Number(b.dataset.ssh))));
     $$('[data-delete]').forEach(b=>b.addEventListener('click',async()=>{
       const sid=Number(b.dataset.delete),server=(state?.servers||[]).find(s=>s.id===sid);
@@ -91,11 +88,11 @@
     const items=servers.filter(s=>[s.name,s.host,s.group].some(x=>String(x||'').toLowerCase().includes(search)));
     $text('#table-count',`${items.length} سرور`);
     $('#server-table').innerHTML=items.map(s=>`<tr><td><span class="table-name">${esc(s.name)}</span><div class="table-ip">${esc(s.host)}${s.id===0?'':' · '+esc(s.group)}</div></td><td><span class="table-status ${s.online?'':'down'}">● ${s.online?'آنلاین':'آفلاین'}</span></td>
-      <td class="mono">${pct(s.cpu)}</td><td class="mono">${pct(s.memory_percent)}</td><td class="mono"><span class="cyan">${bitFmt(effectiveNet(s).rx_bps)}</span> / <span class="violet">${bitFmt(effectiveNet(s).tx_bps)}</span></td><td><div class="table-actions">${detailsButtons(s,s.id===0)}</div></td></tr>`).join('');
+      <td class="mono">${pct(s.cpu)}</td><td class="mono">${pct(s.memory_percent)}</td><td class="mono"><span class="cyan">${bitFmt(hostNetwork(s).rx_bps)}</span> / <span class="violet">${bitFmt(hostNetwork(s).tx_bps)}</span></td><td><div class="table-actions">${detailsButtons(s,s.id===0)}</div></td></tr>`).join('');
     attachCardActions();
   }
   function renderTraffic(servers){
-    $('#traffic-rows').innerHTML=servers.map(s=>`<div class="traffic-row"><span>${esc(s.name)}<br><small class="muted">${esc(chosenIface(s)||'—')}</small></span><span class="mono cyan">↓ ${s.online?bitFmt(effectiveNet(s).rx_bps):'—'}</span><span class="mono violet">↑ ${s.online?bitFmt(effectiveNet(s).tx_bps):'—'}</span><span class="muted">${s.online?'● ONLINE':'○ OFFLINE'}</span></div>`).join('');
+    $('#traffic-rows').innerHTML=servers.map(s=>`<div class="traffic-row"><span>${esc(s.name)}<br><small class="muted">${esc((s.network_interfaces||[s.primary_interface]).filter(Boolean).join(' + ')||'—')}</small></span><span class="mono cyan">↓ ${s.online?bitFmt(hostNetwork(s).rx_bps):'—'}</span><span class="mono violet">↑ ${s.online?bitFmt(hostNetwork(s).tx_bps):'—'}</span><span class="muted">${s.online?'● ONLINE':'○ OFFLINE'}</span></div>`).join('');
   }
   function render(state){
     const ss=state.servers,sm=state.summary;

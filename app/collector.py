@@ -17,6 +17,11 @@ printf '%s\n' '__DISK__'
 df -P -B1 / | tail -n 1
 printf '%s\n' '__NET__'
 cat /proc/net/dev
+printf '%s\n' '__PHYSICAL__'
+for path in /sys/class/net/*; do
+    [ -e "$path/device" ] || continue
+    printf '%s\n' "${path##*/}"
+done
 printf '%s\n' '__ROUTE__'
 cat /proc/net/route
 printf '%s\n' '__UPTIME__'
@@ -164,8 +169,31 @@ def parse_output(txt):
         primary = next((i for i in net if i != 'lo' and not i.startswith(('docker','veth','br-'))), 'lo')
     uptime = float(groups.get('UPTIME', ['0'])[0].split()[0])
     loads = [float(i) for i in groups.get('LOAD', ['0 0 0'])[0].split()[:3]]
+    physical = [name for name in groups.get('PHYSICAL', []) if name in net and name != 'lo']
     return {'cpu': cpu, 'mem': mem, 'disk': disk, 'net': net, 'primary': primary,
-            'uptime': uptime, 'load': loads}
+            'physical_interfaces': physical, 'uptime': uptime, 'load': loads}
+
+def host_network_interfaces(now):
+    """Choose independent host NICs, not virtual overlays which mirror their traffic.
+
+    /sys/class/net/<iface>/device indicates a hardware-backed adapter, including
+    typical cloud virtual NICs (virtio/e1000). On hosts without sysfs, fall back
+    to their default route rather than summing every interface twice.
+    """
+    physical = [name for name in now.get('physical_interfaces', [])
+                if name in now['net'] and name != 'lo']
+    if physical:
+        return physical
+    primary = now.get('primary')
+    candidates = [name for name in now['net'] if name != 'lo' and not name.startswith(
+        ('docker', 'veth', 'br-', 'tun', 'tap', 'wg', 'gre', 'gretap', 'ipip',
+         'sit', 'tailscale', 'virbr', 'zt', 'flannel', 'vxlan'))]
+    if primary in candidates:
+        return [primary]
+    if candidates:
+        return [candidates[0]]
+    return [primary] if primary in now['net'] and primary != 'lo' else []
+
 
 def rate_metrics(now, previous, at):
     old, oldat = previous if previous else (None, at)
@@ -186,7 +214,11 @@ def rate_metrics(now, previous, at):
         interface_rates[name] = {'rx_bps': round(max(0,rx-oldrx)*8/elapsed),
                                  'tx_bps': round(max(0,tx-oldtx)*8/elapsed),
                                  'rx_bytes': rx, 'tx_bytes': tx}
-    usage = interface_rates.get(iface, {'rx_bps':0, 'tx_bps':0, 'rx_bytes':0, 'tx_bytes':0})
+    monitored = host_network_interfaces(now)
+    usage = {'rx_bps':sum(interface_rates[n]['rx_bps'] for n in monitored),
+             'tx_bps':sum(interface_rates[n]['tx_bps'] for n in monitored),
+             'rx_bytes':sum(interface_rates[n]['rx_bytes'] for n in monitored),
+             'tx_bytes':sum(interface_rates[n]['tx_bytes'] for n in monitored)}
     return {'cpu': cpu_rate('cpu'), 'cores': max(1,len(now['cpu'])-1),
         'per_core': [cpu_rate('cpu'+str(n)) for n in range(max(0,len(now['cpu'])-1))],
         'memory_total': mt, 'memory_used': max(0,mt-ma),
@@ -194,7 +226,9 @@ def rate_metrics(now, previous, at):
         'swap_total': mm.get('SwapTotal',0), 'swap_used': max(0,mm.get('SwapTotal',0)-mm.get('SwapFree',0)),
         'disk_total': now['disk']['total'], 'disk_used': now['disk']['used'],
         'disk_percent': round(100*now['disk']['used']/now['disk']['total'],1) if now['disk']['total'] else 0,
-        'primary_interface': iface, 'interfaces': interface_rates,
+        'primary_interface': iface, 'network_interfaces': monitored,
+        'network_scope': 'all-physical' if now.get('physical_interfaces') else 'default-interface',
+        'interfaces': interface_rates,
         'rx_bps': usage['rx_bps'], 'tx_bps': usage['tx_bps'],
         'rx_total':usage['rx_bytes'], 'tx_total':usage['tx_bytes'],
         'uptime':int(now['uptime']), 'load':now['load']}

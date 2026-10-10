@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app import auth, db, settings
 from app.cli import valid_password
-from app.collector import SCRIPT, parse_output, rate_metrics
+from app.collector import SCRIPT, parse_output, rate_metrics, host_network_interfaces
 from app.main import app
 
 PASSWORD = 'TestPassword-Very-Strong-123'
@@ -152,3 +152,46 @@ def test_tls_directory_permissions_regression():
     assert 'runuser -u darkwatch -- test -r "$key"' in access
     assert 'runuser -u darkwatch -- test -r "$crt"' in access
     assert 'Type YES to enable direct HTTPS' not in access
+
+
+def test_total_server_traffic_all_physical_interfaces_without_double_counting():
+    """Count every host NIC, but not tun/bridge/veth that mirror packet paths."""
+    snap = {
+        'cpu': {'cpu': (100, 200)}, 'mem': {'MemTotal': 1024, 'MemAvailable': 512},
+        'disk': {'total': 1024, 'used': 512}, 'uptime': 120,
+        'load': [0.1, 0.1, 0.1], 'primary': 'ens3',
+        'net': {
+            'ens3': (100000, 200000), 'ens4': (10000, 20000),
+            'tun0': (40000, 50000), 'docker0': (40000, 50000),
+            'lo': (500000, 500000),
+        }, 'physical_interfaces': ['ens3', 'ens4'],
+    }
+    nxt = dict(snap)
+    nxt['cpu'] = {'cpu': (150, 300)}
+    nxt['net'] = {
+        'ens3': (1100000, 2200000), 'ens4': (510000, 1020000),
+        'tun0': (2040000, 2050000), 'docker0': (2040000, 2050000),
+        'lo': (5500000, 5500000),
+    }
+    result = rate_metrics(nxt, (snap, 100), 102)
+    assert result['network_interfaces'] == ['ens3', 'ens4']
+    assert result['rx_bps'] == 6_000_000
+    assert result['tx_bps'] == 12_000_000
+    assert result['rx_total'] == 1_610_000
+    assert result['tx_total'] == 3_220_000
+    assert result['interfaces']['tun0']['rx_bps'] == 8_000_000
+    assert result['network_scope'] == 'all-physical'
+
+
+def test_host_nic_fallback_without_sysfs():
+    snap={'primary':'eth0','net':{'lo':(100,100),'eth0':(200,400),
+                                'tun0':(300,600),'docker0':(400,800)}}
+    assert host_network_interfaces(snap) == ['eth0']
+
+
+def test_dashboard_uses_server_total_not_selected_virtual_interface():
+    from pathlib import Path
+    dashboard=(Path(__file__).resolve().parents[1] / 'app/static/app.js').read_text()
+    assert "function hostNetwork(s)" in dashboard
+    assert "selectedIfaces" not in dashboard
+    assert "effectiveNet(s)" not in dashboard
