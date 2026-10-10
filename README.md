@@ -215,3 +215,15 @@ online using its first verified CPU/RAM/network sample. Live CPU and bitrate
 values become available after the next sampling interval. Connection failures
 show specific SSH/authentication/port/timeout errors instead of silently
 creating offline records.
+
+
+## Mobile UI v0.1.6
+
+The phone layout replaces the desktop right sidebar with a fixed, labelled
+five-action bottom dock (Overview, Servers, Traffic, Help, Logout), leaving the
+**full viewport width** for monitoring content. The server inventory becomes
+stacked responsive cards rather than a horizontally clipped table. The header,
+KPI tiles, filter bar, charts and add-server dialog fit the viewport. Preserves
+normal pinch zoom and uses >=16px form input text to avoid iOS automatic zoom.
+Desktop/tablet layouts are unchanged. This is a frontend-only update and does
+not alter server data, SSH secrets, panel port or network monitoring logic.

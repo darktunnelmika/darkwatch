@@ -86,6 +86,16 @@ async function run(){
     await wait(()=>!doc.querySelector('#application').classList.contains('hidden'),'login dashboard: '+errors.join(', ')+'; html='+doc.querySelector('#login-error').textContent);
     assert(!errors.length,'Dashboard errors: '+errors);
     assert.equal(doc.querySelectorAll('#server-cards .server-card').length,3);
+    assert.equal(doc.querySelectorAll('.nav-mobile-copy').length,4,
+                 'Mobile dock should provide labels for all four sections');
+    click('[data-page="network"]');
+    assert(doc.querySelector('#page-network').classList.contains('active'),'Network tab should open');
+    click('[data-page="settings"]');
+    assert(doc.querySelector('#page-settings').classList.contains('active'),'Help tab should open');
+    click('[data-page="servers"]');
+    assert(doc.querySelector('#page-servers').classList.contains('active'),'Servers tab should open');
+    click('[data-page="overview"]');
+    assert(doc.querySelector('#page-overview').classList.contains('active'),'Overview tab should open');
 
     click('.add-server-btn');
     assert(doc.querySelector('#add-modal').hasAttribute('open'),'Add modal must open');

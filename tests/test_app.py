@@ -407,3 +407,23 @@ def test_probe_errors_are_actionable_for_root_password(monkeypatch):
         verify_password_connection({'name':'Test VPS','host':'192.0.2.10','port':22,'ssh_user':'root'},'badpwd')
     assert getattr(error.value,'status_code',None)==422
     assert 'root' in error.value.detail
+
+
+def test_mobile_nav_is_a_bottom_dock_and_pages_fit_viewport(client):
+    page=client.get('/').text
+    css=client.get('/static/style.css').text
+    assert page.count('class="nav-mobile-copy"') == 4
+    assert 'class="logout-mobile-copy"' in page
+    assert 'style.css?v=0.1.6' in page
+    assert 'app.js?v=0.1.6' in page
+    assert '@media (max-width: 767px)' in css
+    assert 'position: fixed; inset: auto 0 0 0' in css
+    assert 'grid-template-columns: repeat(4,minmax(0,1fr))' in css
+    assert '.data-table tr { grid-template-columns: repeat(3,minmax(0,1fr))' in css
+    assert '.data-table tbody { display: grid' in css
+    assert 'overflow-x: clip' in css
+    assert 'min-height: 100svh' in css
+    assert 'env(safe-area-inset-bottom,0px)' in css
+    assert 'font-size:16px!important' in css
+    # Accessible pinch zoom must remain enabled; no maximum-scale or user-scalable=no.
+    assert 'user-scalable=no' not in page
