@@ -17,4 +17,10 @@ else
   echo "$target exists but is not a Git repository; aborting without overwriting." >&2
   exit 1
 fi
-bash "$target/install.sh"
+# Read admin credentials from the controlling terminal, even with curl | bash.
+if [[ -r /dev/tty ]]; then
+  bash "$target/install.sh" </dev/tty
+else
+  echo "Interactive terminal required to set the admin password." >&2
+  exit 1
+fi
