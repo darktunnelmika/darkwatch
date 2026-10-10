@@ -27,8 +27,13 @@ w.navigator.clipboard={writeText:async()=>{}};
 let authorized=false, confirmations=0, deletes=0, registrations=0, passwords=0;
 let servers=[
   {id:0,name:'HUB',host:'127.0.0.1',port:0,group:'مرکزی',online:true,cpu:21,
+   cores:4,memory_total:4*1024**3,memory_used:2*1024**3,
+   disk_total:40*1024**3,disk_used:10*1024**3,swap_total:0,swap_used:0,
    memory_percent:30,disk_percent:20,rx_bps:1000,tx_bps:1000,history:[]},
   {id:1,name:'Iran 1',host:'192.0.2.11',port:22,group:'ایران',ssh_user:'root',
+   cores:8,memory_total:16*1024**3,memory_used:6*1024**3,
+   disk_total:100*1024**3,disk_used:20*1024**3,
+   swap_total:4*1024**3,swap_used:1*1024**3,
    online:true,cpu:25,memory_percent:45,disk_percent:50,rx_bps:8000,tx_bps:7000,history:[]},
   {id:2,name:'Iran 2',host:'192.0.2.12',port:22,group:'ایران',ssh_user:'root',
    online:false,error:'off',history:[]},
@@ -86,6 +91,20 @@ async function run(){
     await wait(()=>!doc.querySelector('#application').classList.contains('hidden'),'login dashboard: '+errors.join(', ')+'; html='+doc.querySelector('#login-error').textContent);
     assert(!errors.length,'Dashboard errors: '+errors);
     assert.equal(doc.querySelectorAll('#server-cards .server-card').length,3);
+    const iranCard=doc.querySelectorAll('#server-cards .server-card')[1];
+    const details=[...iranCard.querySelectorAll('.stat-detail')].map(el=>el.textContent.trim());
+    assert.deepEqual(details,['8 vCPU','6 / 16 GB','20 / 100 GB'],
+                     'CPU cores, RAM used/total and root disk capacity must be visible');
+    assert(iranCard.querySelector('.server-swap').textContent.includes('1 / 4 GB'),
+           'Swap used/total should be visible');
+    assert(iranCard.textContent.includes('Mbps') || iranCard.textContent.includes('Kbps'),
+           'Existing traffic display remains present');
+    const iranTable=doc.querySelectorAll('#server-table tr')[1];
+    assert(iranTable.querySelector('.table-specs').textContent.includes('8 vCPU'),
+           'Inventory table should display server cores');
+    assert(iranTable.querySelector('.table-resource-detail').textContent.includes('8 vCPU'));
+    assert(iranTable.textContent.includes('6 / 16 GB'),
+           'Inventory table should show used/total RAM');
     assert.equal(doc.querySelectorAll('.nav-mobile-copy').length,4,
                  'Mobile dock should provide labels for all four sections');
     click('[data-page="network"]');

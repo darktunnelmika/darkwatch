@@ -189,3 +189,25 @@ body {overflow-x:clip;min-width:0;}
   .data-table td:nth-child(5)::before { content: 'NETWORK · RX / TX'; display: block; text-align: right; margin-bottom: 8px; }
   .data-table td:last-child { padding-top: 8px; margin-top: 0; }
 }
+
+
+/* Resource capacities — keep readable under percent bars on narrow phones. */
+.resource-stat{min-width:0;overflow:hidden}
+.server-stats .stat-label{white-space:nowrap}
+.server-stats .stat-detail{margin-top:7px;font:10px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;
+  color:#a5c8d3;direction:ltr;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.server-swap{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  border-top:1px solid #20343e;margin-top:13px;padding:9px 2px 0;font-size:10px;color:#8eaab5}
+.server-swap strong{font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c8dee4;font-weight:600}
+.server-swap + .network-values{margin-top:12px}
+.data-table .table-primary{display:block}
+.data-table .table-resource-detail{display:block;margin-top:6px;direction:ltr;text-align:right;
+  font:10px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:#9cb8c7;white-space:nowrap}
+.data-table .table-specs{margin-top:9px;display:flex;flex-wrap:wrap;align-items:center;gap:5px 12px;direction:ltr}
+.data-table .table-specs span{font:10px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;
+  color:#9cb9c9;background:#11232f;border:1px solid #22404d;border-radius:5px;padding:3px 6px;white-space:nowrap}
+@media(max-width:767px){
+  .server-stats .stat-detail{font-size:9px;letter-spacing:-.15px}
+  .data-table .table-specs{gap:6px}
+  .data-table .table-resource-detail{font-size:10px;max-width:100%;white-space:normal}
+}
