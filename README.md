@@ -131,3 +131,38 @@ Installation now asks for TCP port (1024-65535) and access mode, then prints the
 
 ## PIN/password setup fix (v0.1.3)
 On first install, choose a four-digit numeric PIN or 12+ character password. Public HTTPS no longer forces a second 12-character password. To use a short PIN with direct HTTPS, you must type YES to acknowledge the risk; HTTPS does NOT protect against PIN guessing, and an IP allowlist or a private tunnel is strongly recommended. On reinstall, answer 'y' to 'Change existing PIN/password?' to reset the PIN. Server entries, database and SSH keys are retained.
+
+
+## Update an existing panel (no reinstallation)
+
+Run on the already installed DARKWATCH host as root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/darktunnelmika/darkwatch/main/update.sh | bash
+```
+
+The updater only fetches code, installs Python dependencies inside the existing
+`/opt/darkwatch/.venv` and restarts `darkwatch.service`. It does not run the
+installer, reset the login, change the selected port, overwrite
+`/etc/darkwatch/env`, remove saved servers, or replace the SSH key.
+Active web SSH sessions will disconnect during the service restart.
+
+### Add a server using its SSH password
+
+Open **Servers > Add Server** and enter the server name, IP, SSH port,
+SSH username and **SSH password**. The panel checks login and reads real
+CPU/RAM/network counters before storing the server. For a previously unknown
+SSH host key, verify the shown SHA256 fingerprint independently in the
+datacenter console and explicitly confirm it. A changed known host key is rejected.
+
+The SSH password is encrypted at rest with a randomly generated Fernet key
+inside the private `/var/lib/darkwatch/.ssh/credential.key` (permissions 0600).
+The server password is never returned through the browser API. Do not lose
+the credential key if restoring the database from backup; without it, saved
+passwords cannot be decrypted. The `🔑` control lets you set/change an SSH
+password for an already registered server. SSH key authentication continues
+working for servers configured using the previous method.
+
+For internet-facing installation, use a **strong admin password and an IP
+allowlist**. A 4-digit panel PIN is not sufficient protection for a tool
+that stores SSH credentials and exposes browser terminals.

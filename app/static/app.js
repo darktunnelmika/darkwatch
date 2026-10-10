@@ -23,7 +23,15 @@
     const response=await fetch(url,{credentials:'same-origin',...options,headers});
     let data=null;try{data=await response.json()}catch(e){}
     if(response.status===401){showLogin();throw new Error(data?.detail||'نیاز به ورود مجدد')}
-    if(!response.ok){ let detail=data?.detail; if(Array.isArray(detail)) detail='اطلاعات ورودی نامعتبر است';throw new Error(detail||`HTTP ${response.status}`) }
+    if(!response.ok){
+      let detail=data?.detail;
+      if(detail && typeof detail==='object' && !Array.isArray(detail)){
+        const err=new Error(detail.message||`HTTP ${response.status}`);
+        err.details=detail;throw err;
+      }
+      if(Array.isArray(detail)) detail='اطلاعات ورودی نامعتبر است';
+      throw new Error(detail||`HTTP ${response.status}`);
+    }
     return data;
   }
   async function bootstrap(){
@@ -45,16 +53,43 @@
   $$('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;$$('.filter').forEach(c=>c.classList.toggle('active',b===c));if(state)renderCards(state.servers)}));
   $('#display-mode').addEventListener('click',()=>{document.body.classList.toggle('display-mode');setTimeout(drawCharts,80)});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('display-mode'))document.body.classList.remove('display-mode')});
-  $$('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{ $('#server-form').reset();$('#form-error').textContent='';$('#add-modal').showModal()}));
+  $('.add-server-btn').forEach(b=>b.addEventListener('click',()=>{
+    const form=$('#server-form');form.querySelectorAll('input').forEach(e=>e.disabled=false);
+    form.reset();delete form.dataset.passwordServer;
+    $text('#server-modal-title','افزودن سرور جدید');
+    $('#form-error').textContent='';$('#add-modal').showModal();
+  }));
   $$('.modal-close').forEach(b=>b.addEventListener('click',()=>$('#add-modal').close()));
   $('#server-form').addEventListener('submit',async e=>{
-    e.preventDefault();const form=e.target;const d=Object.fromEntries(new FormData(form));d.port=Number(d.port);$text('#form-error','');
-    try{await api('/api/servers',{method:'POST',body:JSON.stringify(d)});$('#add-modal').close();popup('سرور ثبت شد؛ اتصال SSH در حال بررسی است');await poll()}
-    catch(err){$text('#form-error',err.message)}
+    e.preventDefault();
+    const form=e.target, editing=form.dataset.passwordServer;
+    const d=Object.fromEntries(new FormData(form));
+    if(!editing)d.port=Number(d.port);
+    const target=editing?`/api/servers/${editing}/ssh-password`:'/api/servers';
+    const method=editing?'PUT':'POST';
+    const button=form.querySelector('button[type="submit"]');
+    button.disabled=true;$text('#form-error','');
+    try{
+      try{await api(target,{method,body:JSON.stringify(d)})}
+      catch(err){
+        if(err.details?.type!=='host_key')throw err;
+        const fp=err.details.fingerprint;
+        const accepted=window.confirm(
+          `کلید SSH این سرور برای اولین بار دیده شده است.\n\nاثر انگشت:\n${fp}\n\nفقط بعد از تطبیق با اثر انگشت سرور در کنسول دیتاسنتر، OK را بزن. اتصال بدون تأیید ذخیره نمی‌شود.`);
+        if(!accepted)return;
+        d.trust_fingerprint=fp;
+        await api(target,{method,body:JSON.stringify(d)});
+      }
+      form.querySelector('input[name="ssh_password"]').value='';
+      $('#add-modal').close();
+      popup(editing?'رمز SSH با موفقیت بررسی و به‌روزرسانی شد':'اتصال SSH تأیید شد و سرور اضافه شد');
+      await poll();
+    }catch(err){$text('#form-error',err.message)}
+    finally{button.disabled=false}
   });
   $('#search-server').addEventListener('input',()=>{if(state)renderTable(state.servers)});
   $$('[data-copy]').forEach(e=>e.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(e.dataset.copy);popup('دستور کپی شد')}catch(err){popup('مرورگر اجازه کپی ندارد')}}));
-  function detailsButtons(s, local=false){return `<div class="card-buttons">${local?'':`<button class="sm-btn ssh-button" data-ssh="${s.id}">⌘ SSH</button><button class="sm-btn remove" data-delete="${s.id}" title="حذف از فهرست (بدون تغییر در سرور)">✕</button>`}</div>`}
+  function detailsButtons(s, local=false){return `<div class="card-buttons">${local?'':`<button class="sm-btn ssh-button" data-ssh="${s.id}">⌘ SSH</button><button class="sm-btn password-button" data-password="${s.id}" title="تغییر رمز اتصال SSH">🔑</button><button class="sm-btn remove" data-delete="${s.id}" title="حذف از فهرست (بدون تغییر در سرور)">✕</button>`}</div>`}
   function statBar(label,value,color){const v=Math.min(100,Math.max(0,value||0));return `<div><div class="stat-label">${label}</div><div class="stat-value">${pct(value)}</div><div class="stat-track"><div class="${color}" style="width:${v}%"></div></div></div>`}
   function hostNetwork(s){return {rx_bps:s.rx_bps||0,tx_bps:s.tx_bps||0,rx_bytes:s.rx_total||0,tx_bytes:s.tx_total||0}}
   function card(s){
@@ -76,7 +111,22 @@
   }
   function sparkFor(s){return (s.history||[]).map(p=>p.rx??0)}
   function attachCardActions(){
-    $$('.ssh-button').forEach(b=>b.addEventListener('click',()=>openTerminal(Number(b.dataset.ssh))));
+    $('.password-button').forEach(b=>b.addEventListener('click',()=>{
+      const s=(state?.servers||[]).find(x=>x.id===Number(b.dataset.password));
+      if(!s)return;
+      const form=$('#server-form');
+      form.reset();form.dataset.passwordServer=String(s.id);
+      form.elements.namedItem('name').value=s.name;
+      form.elements.namedItem('host').value=s.host;
+      form.elements.namedItem('port').value=s.port||22;
+      form.elements.namedItem('ssh_user').value=s.ssh_user||'root';
+      form.elements.namedItem('group_name').value=s.group||'ایران';
+      form.querySelectorAll('input').forEach(el=>{el.disabled=el.name!=='ssh_password'});
+      form.elements.namedItem('ssh_password').value='';
+      $text('#server-modal-title','تغییر رمز SSH سرور');
+      $text('#form-error','');$('#add-modal').showModal();
+    }));
+    $('.ssh-button').forEach(b=>b.addEventListener('click',()=>openTerminal(Number(b.dataset.ssh))));
     $$('[data-delete]').forEach(b=>b.addEventListener('click',async()=>{
       const sid=Number(b.dataset.delete),server=(state?.servers||[]).find(s=>s.id===sid);
       if(!window.confirm(`«${server?.name||'سرور'}» از پنل حذف شود؟ خود سرور یا فایل‌های آن تغییری نمی‌کند.`))return;

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import shutil
 import struct
 import termios
@@ -22,8 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.websockets import WebSocketState
 
-from . import auth, db, settings
-from .collector import Monitor
+from . import auth, db, settings, ssh_credentials
+from .collector import Monitor, SCRIPT, parse_output
 
 monitor = Monitor()
 login_attempts = collections.defaultdict(collections.deque)
@@ -142,6 +143,8 @@ class ServerInput(BaseModel):
     port: int = Field(default=22, ge=1, le=65535)
     ssh_user: str = Field(default='root', min_length=1, max_length=32)
     group_name: str = Field(default='ایران', min_length=1, max_length=48)
+    ssh_password: str | None = Field(default=None, max_length=1024)
+    trust_fingerprint: str | None = Field(default=None, max_length=110)
 
     @field_validator('name','group_name')
     @classmethod
@@ -168,14 +171,65 @@ class ServerInput(BaseModel):
                 raise ValueError('دامنه/IP نامعتبر')
         return v
 
+def verify_password_connection(server, password, trust_fingerprint=None):
+    try:
+        # Test actual metrics collection before saving credentials.
+        output = ssh_credentials.collect_password_metrics(
+            server, password, SCRIPT, trust_fingerprint)
+        parse_output(output.decode('utf-8', 'replace'))
+    except ssh_credentials.UntrustedHostKey as exc:
+        raise HTTPException(428, detail={
+            'type': 'host_key', 'fingerprint': exc.fingerprint,
+            'message': 'اثر انگشت سرور جدید را از کنسول دیتاسنتر بررسی و تأیید کن.'
+        })
+    except Exception as exc:
+        import paramiko
+        if isinstance(exc, paramiko.BadHostKeyException):
+            raise HTTPException(409, 'کلید SSH این سرور با کلید قبلی متفاوت است؛ اتصال رد شد')
+        if isinstance(exc, paramiko.AuthenticationException):
+            raise HTTPException(422, 'نام کاربری یا رمز SSH اشتباه است یا ورود با رمز غیرفعال است')
+        if isinstance(exc, (OSError, TimeoutError, socket.timeout, paramiko.SSHException, ValueError)):
+            raise HTTPException(422, 'اتصال SSH یا دریافت آمار سرور ناموفق بود؛ IP، پورت و فایروال را بررسی کن')
+        raise HTTPException(422, 'اتصال SSH انجام نشد')
+
+
 @app.post('/api/servers', status_code=201)
 def create_server(data: ServerInput, _=Depends(verify_csrf)):
-    try:
-        sid = db.add_server(data.model_dump())
+    values = data.model_dump(exclude={'ssh_password', 'trust_fingerprint'})
+    if data.ssh_password:
+        verify_password_connection(values, data.ssh_password, data.trust_fingerprint)
+        encrypted = ssh_credentials.encrypt_password(data.ssh_password)
+        try:
+            sid = db.add_password_server(values, encrypted)
+        except Exception as exc:
+            if 'UNIQUE' in str(exc): raise HTTPException(409,'این سرور از قبل اضافه شده؛ از گزینه تغییر رمز SSH استفاده کن')
+            raise
+        monitor.clear(sid)
         return {'id':sid, 'ok':True}
-    except Exception as e:
-        if 'UNIQUE' in str(e): raise HTTPException(409,'این سرور از قبل اضافه شده')
+    # Existing SSH-key workflow remains backwards-compatible.
+    try:
+        sid = db.add_server(values)
+        return {'id':sid, 'ok':True}
+    except Exception as exc:
+        if 'UNIQUE' in str(exc): raise HTTPException(409,'این سرور از قبل اضافه شده')
         raise
+
+
+class PasswordInput(BaseModel):
+    ssh_password: str = Field(min_length=1, max_length=1024)
+    trust_fingerprint: str | None = Field(default=None, max_length=110)
+
+
+@app.put('/api/servers/{server_id}/ssh-password')
+def change_ssh_password(server_id: int, data: PasswordInput, _=Depends(verify_csrf)):
+    server = db.get_server(server_id) if server_id > 0 else None
+    if not server:
+        raise HTTPException(404, 'سرور پیدا نشد')
+    verify_password_connection(server, data.ssh_password, data.trust_fingerprint)
+    if not db.set_password(server_id, ssh_credentials.encrypt_password(data.ssh_password)):
+        raise HTTPException(404, 'سرور پیدا نشد')
+    monitor.clear(server_id)
+    return {'ok': True}
 
 @app.delete('/api/servers/{server_id}')
 def delete_server(server_id:int, _=Depends(verify_csrf)):
@@ -193,72 +247,127 @@ def terminal_resize(fd, cols, rows):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 @app.websocket('/ws/ssh/{server_id}')
-async def terminal(ws:WebSocket, server_id:int):
+async def terminal(ws: WebSocket, server_id: int):
     if not ws_auth(ws):
-        await ws.close(code=4403); return
-    server = db.get_server(server_id) if server_id>0 else None
+        await ws.close(code=4403)
+        return
+    server = db.get_server(server_id) if server_id > 0 else None
     if not server:
-        await ws.close(code=4404); return
+        await ws.close(code=4404)
+        return
     if len(active_terminals) >= 4:
-        await ws.close(code=4429); return
+        await ws.close(code=4429)
+        return
     await ws.accept()
     token = object()
     active_terminals.add(token)
     master = slave = None
     proc = None
     outgoing = None
+    password_client = password_channel = None
     try:
-        if not shutil.which('ssh'):
-            await ws.send_json({'type':'error','message':'OpenSSH client نصب نشده است'}); return
-        master, slave = os.openpty()
-        terminal_resize(slave, 100, 28)
-        proc = await asyncio.create_subprocess_exec('ssh', '-tt', '-i', str(settings.SSH_KEY),
-            '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
-            '-o', f'UserKnownHostsFile={settings.KNOWN_HOSTS}', '-o', 'ConnectTimeout=5',
-            '-p', str(server['port']), '-l', server['ssh_user'], '--', server['host'],
-            stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
-        os.close(slave); slave = None
-        async def pump():
-            while True:
-                try:
-                    output = await asyncio.to_thread(os.read, master, 16384)
-                except (OSError, ValueError):
-                    break
-                if not output: break
-                if ws.client_state == WebSocketState.CONNECTED:
-                    await ws.send_json({'type':'output','data':output.decode('utf-8','replace')})
-        outgoing = asyncio.create_task(pump())
+        credential = db.get_encrypted_password(server_id)
+        if credential is not None:
+            password = ssh_credentials.decrypt_password(credential)
+            password_client, password_channel = await asyncio.to_thread(
+                ssh_credentials.open_password_terminal, server, password)
+
+            async def pump_password():
+                while True:
+                    try:
+                        output = await asyncio.to_thread(password_channel.recv, 16384)
+                    except socket.timeout:
+                        if password_channel.closed:
+                            break
+                        continue
+                    except (OSError, EOFError, ValueError):
+                        break
+                    if not output:
+                        break
+                    if ws.client_state == WebSocketState.CONNECTED:
+                        await ws.send_json({'type': 'output', 'data': output.decode('utf-8', 'replace')})
+            outgoing = asyncio.create_task(pump_password())
+        else:
+            if not shutil.which('ssh'):
+                await ws.send_json({'type':'error','message':'OpenSSH client نصب نشده است'})
+                return
+            master, slave = os.openpty()
+            terminal_resize(slave, 100, 28)
+            proc = await asyncio.create_subprocess_exec('ssh', '-tt', '-i', str(settings.SSH_KEY),
+                '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+                '-o', f'UserKnownHostsFile={settings.KNOWN_HOSTS}', '-o', 'ConnectTimeout=5',
+                '-p', str(server['port']), '-l', server['ssh_user'], '--', server['host'],
+                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
+            os.close(slave)
+            slave = None
+
+            async def pump_key():
+                while True:
+                    try:
+                        output = await asyncio.to_thread(os.read, master, 16384)
+                    except (OSError, ValueError):
+                        break
+                    if not output:
+                        break
+                    if ws.client_state == WebSocketState.CONNECTED:
+                        await ws.send_json({'type':'output','data':output.decode('utf-8','replace')})
+            outgoing = asyncio.create_task(pump_key())
+
         while True:
             payload = await ws.receive_text()
-            if len(payload) > 70000: await ws.close(code=1009); break
-            try: message = json.loads(payload)
-            except json.JSONDecodeError: continue
-            if message.get('type')=='input':
+            if len(payload) > 70000:
+                await ws.close(code=1009)
+                break
+            try:
+                message = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if message.get('type') == 'input':
                 s = message.get('data','')
-                if isinstance(s,str) and len(s)<65536:
-                    await asyncio.to_thread(os.write,master,s.encode('utf-8'))
-            elif message.get('type')=='resize':
-                cols = message.get('cols',100); rows = message.get('rows',28)
-                if type(cols)==int and type(rows)==int and 20<=cols<=400 and 8<=rows<=180:
-                    terminal_resize(master, cols, rows)
+                if isinstance(s, str) and len(s) < 65536:
+                    if password_channel:
+                        await asyncio.to_thread(password_channel.sendall, s.encode('utf-8'))
+                    else:
+                        await asyncio.to_thread(os.write, master, s.encode('utf-8'))
+            elif message.get('type') == 'resize':
+                cols, rows = message.get('cols',100), message.get('rows',28)
+                if type(cols) == int and type(rows) == int and 20 <= cols <= 400 and 8 <= rows <= 180:
+                    if password_channel:
+                        await asyncio.to_thread(password_channel.resize_pty, width=cols, height=rows)
+                    else:
+                        terminal_resize(master, cols, rows)
     except (WebSocketDisconnect, OSError, ConnectionError):
         pass
-    except Exception as exc:
-        try: await ws.send_json({'type':'error','message':'خطا در اتصال SSH'})
-        except Exception: pass
+    except Exception:
+        try:
+            await ws.send_json({'type':'error','message':'SSH وصل نشد؛ اطلاعات ورود و دسترسی سرور را بررسی کن'})
+        except Exception:
+            pass
     finally:
         if proc and proc.returncode is None:
             proc.terminate()
-            try: await asyncio.wait_for(proc.wait(),timeout=2)
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2)
             except asyncio.TimeoutError:
-                proc.kill(); await proc.wait()
-        if master is not None: os.close(master)
-        if slave is not None: os.close(slave)
+                proc.kill()
+                await proc.wait()
+        if password_channel:
+            password_channel.close()
+        if password_client:
+            password_client.close()
+        if master is not None:
+            os.close(master)
+        if slave is not None:
+            os.close(slave)
         if outgoing:
             outgoing.cancel()
-            try: await outgoing
-            except (asyncio.CancelledError, OSError): pass
+            try:
+                await outgoing
+            except (asyncio.CancelledError, OSError):
+                pass
         active_terminals.discard(token)
         if ws.client_state == WebSocketState.CONNECTED:
-            try: await ws.close()
-            except Exception: pass
+            try:
+                await ws.close()
+            except Exception:
+                pass

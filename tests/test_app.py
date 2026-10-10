@@ -195,3 +195,72 @@ def test_dashboard_uses_server_total_not_selected_virtual_interface():
     assert "function hostNetwork(s)" in dashboard
     assert "selectedIfaces" not in dashboard
     assert "effectiveNet(s)" not in dashboard
+
+
+def test_password_ssh_register_verify_and_update_existing_server(client, monkeypatch, tmp_path):
+    """First registration requests fingerprint confirmation, then saves encrypted secret."""
+    from app import ssh_credentials
+    monkeypatch.setattr(settings, 'DATA_DIR', tmp_path / 'credentials-data')
+    attempts = []
+    def fake_collect(server, password, script, confirmed=None):
+        attempts.append((password, confirmed, server['host']))
+        if confirmed != 'SHA256:verified-host':
+            raise ssh_credentials.UntrustedHostKey('SHA256:verified-host')
+        raw = subprocess.run(['sh', '-s'], input=SCRIPT, capture_output=True,
+                             check=True, text=True).stdout
+        return raw.encode()
+    monkeypatch.setattr(ssh_credentials, 'collect_password_metrics', fake_collect)
+    csrf = login(client)
+    payload = {'name':'Iran server','host':'192.0.2.99','port':2022,'ssh_user':'root',
+               'group_name':'ایران','ssh_password':'RemotePassword_123!'}
+    headers = {'X-CSRF-Token':csrf}
+    first = client.post('/api/servers', json=payload, headers=headers)
+    assert first.status_code == 428
+    assert first.json()['detail']['fingerprint'] == 'SHA256:verified-host'
+    assert client.get('/api/servers').json() == []
+    payload['trust_fingerprint'] = 'SHA256:verified-host'
+    second = client.post('/api/servers', json=payload, headers=headers)
+    assert second.status_code == 201
+    sid = second.json()['id']
+    registered = client.get('/api/servers').json()
+    assert len(registered)==1
+    assert 'ssh_password' not in registered[0]
+    assert 'encrypted_password' not in registered[0]
+    enc = db.get_encrypted_password(sid)
+    assert enc and 'RemotePassword_123!' not in enc
+    assert ssh_credentials.decrypt_password(enc) == 'RemotePassword_123!'
+    change = client.put(f'/api/servers/{sid}/ssh-password', headers=headers,
+        json={'ssh_password':'AnotherPassword_456!', 'trust_fingerprint':'SHA256:verified-host'})
+    assert change.status_code == 200
+    assert ssh_credentials.decrypt_password(db.get_encrypted_password(sid)) == 'AnotherPassword_456!'
+    assert client.delete(f'/api/servers/{sid}', headers=headers).status_code == 200
+    assert db.get_encrypted_password(sid) is None
+
+
+def test_password_login_does_not_disclose_ssh_secrets(client):
+    from app import ssh_credentials
+    csrf=login(client)
+    headers={'X-CSRF-Token':csrf}
+    sid=db.add_server({'name':'Example','host':'203.0.113.2','port':22,
+        'ssh_user':'root','group_name':'ایران'})
+    db.set_password(sid, 'ENCRYPTED_SAMPLE_DO_NOT_RETURN')
+    for endpoint in ['/api/servers','/api/state']:
+        response=client.get(endpoint)
+        assert response.status_code == 200
+        assert 'ENCRYPTED_SAMPLE_DO_NOT_RETURN' not in response.text
+
+
+def test_ui_password_field_and_upgrade_script_safety():
+    from pathlib import Path
+    base=Path(__file__).resolve().parents[1]
+    page=(base/'app/static/index.html').read_text()
+    ui=(base/'app/static/app.js').read_text()
+    upgrader=(base/'update.sh').read_text()
+    assert 'name="ssh_password"' in page
+    assert 'type="password"' in page
+    assert 'data-password' in ui
+    assert 'host_key' in ui
+    assert '/etc/darkwatch/env' in upgrader
+    assert 'bash "$source_repo/install.sh"' not in upgrader
+    assert 'configure-access.sh' not in upgrader.replace(
+        '# DARKWATCH in-place update. Never run install.sh or configure-access.sh.','')

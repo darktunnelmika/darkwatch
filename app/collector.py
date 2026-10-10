@@ -118,7 +118,8 @@ class Monitor:
         for server in items:
             obj = dict(self.snapshots.get(server['id'], {'id': server['id'], 'online': False, 'error': 'در حال اتصال'}))
             obj.update({'id': server['id'], 'name': server['name'], 'host': server['host'],
-                        'group': server['group_name']})
+                        'group': server['group_name'], 'port': server.get('port',0),
+                        'ssh_user': server.get('ssh_user','')})
             obj['history'] = list(self.history[server['id']])
             records.append(obj)
         online = [r for r in records if r.get('online')]
